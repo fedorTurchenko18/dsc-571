@@ -1,0 +1,75 @@
+# Primary keys represent the names of `FeatureExtractor` class constructor arguments
+# This config contains default values of these corresponding arguments
+
+lambda_features:
+  prodcategoryname:
+    new_feature_name: 'prodcatbroad'
+    lambda_func: "lambda x: 'fuel_qty' if x == 'FUELS' else 'car_wash_qty' if x == 'CAR WASH' else 'convenience_store_qty'"
+
+  receiptdate:
+    new_feature_name: 'weekday'
+    lambda_func: "lambda x: 'weekend_qty' if x.day_name() in ['Saturday', 'Sunday'] else 'weekday_qty'"
+
+customer_level_features:
+  - 'columns': 'prodcatbroad'
+    'values': 'qty'
+    'index': 'ciid'
+    'aggfunc': 'sum'
+
+  - 'columns': 'peak_hour'
+    'values': 'qty'
+    'index': 'ciid'
+    'aggfunc': 'sum'
+
+  - 'columns': 'weekday'
+    'values': 'qty'
+    'index': 'ciid'
+    'aggfunc': 'sum'
+
+  - 'columns': 'fuel_type'
+    'values': 'qty'
+    'index': 'ciid'
+    'aggfunc': 'sum'
+
+  - 'columns': 'breaks'
+    'values': 'qty'
+    'index': 'ciid'
+    'aggfunc': 'sum'
+    'prefix': 'qty'
+
+  - 'columns': null
+    'values': 'target'
+    'index': 'ciid'
+    'aggfunc': 'mean'
+
+  - 'columns': null
+    'values': 'average_days_between_visits'
+    'index': 'ciid'
+    'aggfunc': 'mean'
+
+# Do not forget to add here the names of the final new column(s)
+current_features:
+  - 'fuel_qty'
+  - 'unleaded_95_qty'
+  - 'peak_hours_qty'
+  - 'usual_hours_qty'
+  - 'weekday_qty'
+  - 'weekend_qty'
+  - 'qty_1-7'
+  - 'qty_8-14'
+  - 'qty_15-21'
+  - 'qty_22-28'
+  - 'average_days_between_visits'
+
+train_test_split_params: 
+  'test_size': 0.25
+  'random_state': 571
+  # Data is sorted by date => need to shuffle
+  'shuffle': True
+
+# Currently unused
+# In future, if used, store in .env
+# This is to note only
+huggingface:
+  token: null
+  model_repo: null
