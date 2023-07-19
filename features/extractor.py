@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from sklearn.model_selection import train_test_split
 
 ###--- Unused ---###
-from bertopic import BERTopic
-from huggingface_hub import login, logout
+# from bertopic import BERTopic
+# from huggingface_hub import login, logout
 ###--------------###
 
 
@@ -353,23 +353,23 @@ class FeatureExtractor:
         return pd.pivot_table(self.sales, values, index, columns, aggfunc).reset_index()
 
 
-    def extract_topic_modelling_features(self):
-        '''
-        Method to cluster categories of `sales['prodcategoryname']` through pre-trained topic modelling model
-        Currently unused, since features turned out to be unrepresentative in terms of variety of relationship between classes of target variable
-        '''
-        login(token=self.huggingface_token)
-        topic_model = BERTopic.load(self.huggingface_model_repo)
-        logout()
-        unique_categories = self.sales[~self.sales['prodcategoryname'].isin(['FUELS', 'CAR WASH'])]['prodcategoryname'].unique()
-        print(unique_categories.shape[0])
-        topics, probs = topic_model.transform(unique_categories)
-        topic_model_df = topic_model.get_topic_info().set_index('Topic')
-        mapping = {
-            cat: topic_model_df.loc[topic, 'Name'][topic_model_df.loc[topic, 'Name'].find('_')+len('_'):] for cat, topic in zip(unique_categories, topics)
-        }
-        self.sales['prodcatbroad'] = self.sales['prodcategoryname'].apply(lambda x: 'fuel' if x == 'FUELS' else 'car_wash' if x == 'CAR WASH' else mapping[x])
-        return self.sales
+    # def extract_topic_modelling_features(self):
+    #     '''
+    #     Method to cluster categories of `sales['prodcategoryname']` through pre-trained topic modelling model
+    #     Currently unused, since features turned out to be unrepresentative in terms of variety of relationship between classes of target variable
+    #     '''
+    #     login(token=self.huggingface_token)
+    #     topic_model = BERTopic.load(self.huggingface_model_repo)
+    #     logout()
+    #     unique_categories = self.sales[~self.sales['prodcategoryname'].isin(['FUELS', 'CAR WASH'])]['prodcategoryname'].unique()
+    #     print(unique_categories.shape[0])
+    #     topics, probs = topic_model.transform(unique_categories)
+    #     topic_model_df = topic_model.get_topic_info().set_index('Topic')
+    #     mapping = {
+    #         cat: topic_model_df.loc[topic, 'Name'][topic_model_df.loc[topic, 'Name'].find('_')+len('_'):] for cat, topic in zip(unique_categories, topics)
+    #     }
+    #     self.sales['prodcatbroad'] = self.sales['prodcategoryname'].apply(lambda x: 'fuel' if x == 'FUELS' else 'car_wash' if x == 'CAR WASH' else mapping[x])
+    #     return self.sales
 
 
     def merge_dataframes(self):
