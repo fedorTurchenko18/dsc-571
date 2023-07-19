@@ -1,4 +1,4 @@
 # Make sure shell is trusted
 set -a
-source .env
+source ./configs/.env
 set +a
