@@ -4,10 +4,14 @@ import re
 
 from configs import settings
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Union
 
 
 def login_wandb():
+    '''
+    Performs login to Weights & Biases
+    Pre-setting routine is described in `./README.md`
+    '''
     try:
         subprocess.check_call(['wandb', 'login', settings.SETTINGS['WANDB_KEY']])
     except:
@@ -38,6 +42,7 @@ def init_wandb_run(
     name: str,
     model: Literal['sklearn-model'],
     config: dict,
+    target_month: Literal['FeatureExtractor.target_month'],
     group: Literal[
         'default_parameters',
         'parameters_tuning',
@@ -46,7 +51,12 @@ def init_wandb_run(
         'resampling_default_parameters',
         'resampling_parameters_tuning'
     ],
-    job_type: Literal['train', 'test'],
+    job_type: Literal[
+        'train',
+        'test',
+        'tuning_train',
+        'tuning_test'
+    ],
     add_timestamp_to_name: bool = True,
     resume: str = None,
     reinit: bool = False,
@@ -58,10 +68,15 @@ def init_wandb_run(
     `name` - name of the run \n
     `model` - sklearn model object, see `utils.generate_wandb_project_name` for details \n
     `config` - inputs to your job, like hyperparameters for a model \n
+    `target_month` - the month for which prediction is made; pass exactly `FeatureExtractor.target_month` object \n
     `project` - Weights & Biases project to which the run should be published
         Each project refers to a certain model \n
     `group` - the group to which the run belongs \n
-    `job_type` - type of the run in terms of whether the is done on training or test set \n
+    `job_type` - type of the run in terms of whether the is done on training or test set
+        - train: performance on train set
+        - test: performance on test set
+        - tuning_train: parameters tuning performance on train set
+        - tuning_test: parameters tuning performance on test set \n
     `add_timestamp_to_name` - if adding timestamp of the run is required \n
     `resume` - if resuming run is allowed \n
     `reinit` - if calling `wandb.init` multiple times within a run is allowed \n
@@ -70,6 +85,8 @@ def init_wandb_run(
     project = generate_wandb_project_name(model)
 
     run_id = wandb.util.generate_id()
+    
+    name = f'{name}_month{target_month}'
     
     if add_timestamp_to_name:
         name = f"{name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
@@ -114,3 +131,24 @@ def get_artifact(
     api = wandb.Api()
     artifact = api.artifact(f"{entity}/{project}/{artifact_name}:latest")
     return artifact
+
+
+def parse_classification_report(report: Union[Literal['sklearn.metrics.classification_report'], dict]) -> dict:
+    '''
+    Extract required metrics from `sklearn.metrics.classification_report`
+    and transform it into `wandb.Artefact` friendly format
+
+    report - `sklearn.metrics.classifcation_report(..., output_dict=True)`; report as dictionary
+    '''
+    new_dict = {
+        'accuracy': None,
+        'precision': [],
+        'recall': [],
+        'f1-score': []
+    }
+    new_dict['accuracy'] = report['accuracy']
+    for k in (['0', '1', 'macro avg']):
+        for metric in ['precision', 'recall', 'f1-score']:
+            new_dict[metric].append({f'{k}_{metric}': report[k][metric]})
+
+    return new_dict
