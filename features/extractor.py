@@ -120,6 +120,7 @@ class FeatureExtractor:
         self.sales = self.extract_days_between_visits()
         self.sales = self.extract_peak_hours()
         self.sales = self.extract_recency()
+        self.sales = self.extract_last_purchase_share()
 
         # Extract "lambda" features
         for feature in self.lambda_features:
@@ -334,12 +335,36 @@ class FeatureExtractor:
     
 
     def extract_recency(self):
+        '''
+        TODO: add docstring
+        '''
         tmp = self.sales.groupby('ciid')['receiptdate'].apply(lambda x: ((x.min()+timedelta(days=30))-x.max()).days).to_frame('recency').reset_index()
         self.sales = pd.merge(
             self.sales,
             tmp,
             how='left',
             on='ciid'
+        )
+        return self.sales
+    
+
+    def extract_last_purchase_share(self):
+        '''
+        TODO: add docstring
+        '''
+        tmp = self.sales.groupby(['ciid', 'receiptdate']).agg({'qty': 'sum'}).reset_index()
+        tmp = pd.merge(
+            tmp.groupby('ciid').agg(amount_spent = pd.NamedAgg('qty', 'sum')),
+            tmp.loc[tmp.groupby('ciid')['receiptdate'].apply(pd.Series.idxmax).values, :][['ciid', 'qty']],
+            how='left',
+            on='ciid'
+        )
+        tmp['last_purchase_share'] = tmp['qty']/tmp['amount_spent']
+        self.sales = pd.merge(
+            self.sales,
+            tmp[['ciid', 'last_purchase_share']],
+            on='ciid',
+            how='left'
         )
         return self.sales
 
