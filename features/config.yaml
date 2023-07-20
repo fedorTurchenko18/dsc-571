@@ -47,6 +47,11 @@ customer_level_features:
     'index': 'ciid'
     'aggfunc': 'mean'
 
+  - 'columns': null
+    'values': 'recency'
+    'index': 'ciid'
+    'aggfunc': 'mean'
+
 # Do not forget to add here the names of the final new column(s)
 current_features:
   - 'fuel_qty'
@@ -60,6 +65,7 @@ current_features:
   - 'qty_15-21'
   - 'qty_22-28'
   - 'average_days_between_visits'
+  - 'recency'
 
 train_test_split_params: 
   'test_size': 0.25

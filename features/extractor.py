@@ -40,6 +40,7 @@ class FeatureExtractor:
             customers: pd.DataFrame = None,
             period: Annotated[int, PeriodValueRange(7, float('inf'))] = 30,
             target_month: Annotated[int, PeriodValueRange(1, float('inf'))] = 3,
+            perform_split: bool = True,
             lambda_features = LAMBDA_FEATURES,
             customer_level_features = CUSTOMER_LEVEL_FEATURES,
             current_features: List[str] = CURRENT_FEATURES,
@@ -57,6 +58,8 @@ class FeatureExtractor:
                 `[ [1st-7th], [8th-14th], [15th-21st]), [22nd-28th] ]` days
 
         `target_month` - consecutive month for which the prediction should be performed; defaults to the 3rd month of user activity \n
+
+        `perform_split` - if `sklearn.model_selection.train_test_split` should be performed \n
 
         `lambda_features` - dictionary of features to be extracted from the given dataset using `.apply` => `.lambda` method
             Each item of this dictionary is of a form:
@@ -84,6 +87,7 @@ class FeatureExtractor:
         self.customers = customers
         self.period = period
         self.target_month = target_month
+        self.perform_split = perform_split
         self.lambda_features = lambda_features
         self.customer_level_features = customer_level_features
         self.current_features = current_features
@@ -115,6 +119,7 @@ class FeatureExtractor:
         # These features have unique extraction algorithms, so they are generated independently
         self.sales = self.extract_days_between_visits()
         self.sales = self.extract_peak_hours()
+        self.sales = self.extract_recency()
 
         # Extract "lambda" features
         for feature in self.lambda_features:
@@ -145,12 +150,15 @@ class FeatureExtractor:
             X = df_customer_level.fillna(0)
         y = df_customer_level['target']
         
-        X_train, X_test, y_train, y_test = train_test_split(
-            X,
-            y,
-            **self.train_test_split_params
-        )
-        return X_train, X_test, y_train, y_test
+        if self.perform_split:
+            X_train, X_test, y_train, y_test = train_test_split(
+                X,
+                y,
+                **self.train_test_split_params
+            )
+            return X_train, X_test, y_train, y_test
+        else:
+            return X, y
 
 
     def filter_sales(self):
@@ -322,6 +330,17 @@ class FeatureExtractor:
         mask.replace(True, 'peak_hours_qty', inplace=True)
         mask.replace(False, 'usual_hours_qty', inplace=True)
         self.sales['peak_hour'] = mask
+        return self.sales
+    
+
+    def extract_recency(self):
+        tmp = self.sales.groupby('ciid')['receiptdate'].apply(lambda x: ((x.min()+timedelta(days=30))-x.max()).days).to_frame('recency').reset_index()
+        self.sales = pd.merge(
+            self.sales,
+            tmp,
+            how='left',
+            on='ciid'
+        )
         return self.sales
 
 
