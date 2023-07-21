@@ -3,15 +3,14 @@ import numpy as np
 import warnings
 import yaml
 
+from configs import settings
 from datetime import datetime, timedelta
 from typing import Annotated, Callable, Union, List
 from dataclasses import dataclass
 from sklearn.model_selection import train_test_split
 
-###--- Unused ---###
-# from bertopic import BERTopic
-# from huggingface_hub import login, logout
-###--------------###
+from bertopic import BERTopic
+from huggingface_hub import login, logout
 
 
 with open('features/config.yaml', 'r') as f:
@@ -26,12 +25,13 @@ class PeriodValueRange:
 
 class FeatureExtractor:
 
+    GROUPBY_FEATURES: List[dict] = config['groupby_features']
     LAMBDA_FEATURES: List[dict] = config['lambda_features']
     CUSTOMER_LEVEL_FEATURES: List[dict] = config['customer_level_features']
     CURRENT_FEATURES: List[str] = config['current_features']
     TRAIN_TEST_SPLIT_PARAMS: dict = config['train_test_split_params']
-    HUGGINGFACE_TOKEN: str = config['huggingface']['token']
-    HUGGINGFACE_MODEL_REPO: str = config['huggingface']['model_repo']
+    HUGGINGFACE_TOKEN: str = settings.SETTINGS['HUGGINGFACE_TOKEN']
+    HUGGINGFACE_MODEL_REPO: str = settings.SETTINGS['HUGGINGFACE_MODEL_REPO']
 
     def __init__(
             self,
@@ -41,6 +41,7 @@ class FeatureExtractor:
             period: Annotated[int, PeriodValueRange(7, float('inf'))] = 30,
             target_month: Annotated[int, PeriodValueRange(1, float('inf'))] = 3,
             perform_split: bool = True,
+            groupby_features = GROUPBY_FEATURES,
             lambda_features = LAMBDA_FEATURES,
             customer_level_features = CUSTOMER_LEVEL_FEATURES,
             current_features: List[str] = CURRENT_FEATURES,
@@ -61,7 +62,10 @@ class FeatureExtractor:
 
         `perform_split` - if `sklearn.model_selection.train_test_split` should be performed \n
 
+        `groupby_features` - TODO: add docstring \n
+
         `lambda_features` - dictionary of features to be extracted from the given dataset using `.apply` => `.lambda` method
+            TODO: change docstring
             Each item of this dictionary is of a form:
                 `{'given_dataset_column_name': {'new_feature_name': 'some_name', 'lambda_func': 'some_func'}}`
 
@@ -88,6 +92,7 @@ class FeatureExtractor:
         self.period = period
         self.target_month = target_month
         self.perform_split = perform_split
+        self.groupby_features = groupby_features
         self.lambda_features = lambda_features
         self.customer_level_features = customer_level_features
         self.current_features = current_features
@@ -119,16 +124,19 @@ class FeatureExtractor:
         # These features have unique extraction algorithms, so they are generated independently
         self.sales = self.extract_days_between_visits()
         self.sales = self.extract_peak_hours()
-        self.sales = self.extract_recency()
         self.sales = self.extract_last_purchase_share()
+        self.sales = self.extract_topic_modelling_features()
+
+        #Extract "groupby" features
+        for feature in self.groupby_features:
+            self.sales = self.extract_feature_groupby(
+                **feature
+            )
 
         # Extract "lambda" features
         for feature in self.lambda_features:
             self.sales = self.extract_feature_lambda(
-                initial_col=feature,
-                feature_name=self.lambda_features[feature]['new_feature_name'],
-                # lambda expression is stored as a string in config => use `eval`
-                lambda_func=eval(self.lambda_features[feature]['lambda_func'])
+                **feature
             )
 
         # Depends on `prodcatbroad` column, thus, executed after extraction of "lambda" features
@@ -334,20 +342,6 @@ class FeatureExtractor:
         return self.sales
     
 
-    def extract_recency(self):
-        '''
-        TODO: add docstring
-        '''
-        tmp = self.sales.groupby('ciid')['receiptdate'].apply(lambda x: ((x.min()+timedelta(days=30))-x.max()).days).to_frame('recency').reset_index()
-        self.sales = pd.merge(
-            self.sales,
-            tmp,
-            how='left',
-            on='ciid'
-        )
-        return self.sales
-    
-
     def extract_last_purchase_share(self):
         '''
         TODO: add docstring
@@ -369,11 +363,27 @@ class FeatureExtractor:
         return self.sales
 
 
+    def extract_feature_groupby(self, groupcol, aggcol, aggfunc, to_frame_name):
+        '''
+        TODO: add docstring
+        '''
+        aggfunc = eval(aggfunc)
+        tmp = self.sales.groupby(groupcol)[aggcol].apply(aggfunc).to_frame(to_frame_name).reset_index()
+        self.sales = pd.merge(
+            self.sales,
+            tmp,
+            how='left',
+            on=groupcol
+        )
+        return self.sales
+
+
     def extract_feature_lambda(self, feature_name: str, initial_col: str, lambda_func: Callable):
         '''
         Method to extract feature from the given dataset using `.apply` => `.lambda` method
         Arguments replicate structure of a `self.lambda_features`
         '''
+        lambda_func = eval(lambda_func)
         self.sales[feature_name] = self.sales[initial_col].apply(lambda_func)
         return self.sales
     
@@ -397,23 +407,24 @@ class FeatureExtractor:
         return pd.pivot_table(self.sales, values, index, columns, aggfunc).reset_index()
 
 
-    # def extract_topic_modelling_features(self):
-    #     '''
-    #     Method to cluster categories of `sales['prodcategoryname']` through pre-trained topic modelling model
-    #     Currently unused, since features turned out to be unrepresentative in terms of variety of relationship between classes of target variable
-    #     '''
-    #     login(token=self.huggingface_token)
-    #     topic_model = BERTopic.load(self.huggingface_model_repo)
-    #     logout()
-    #     unique_categories = self.sales[~self.sales['prodcategoryname'].isin(['FUELS', 'CAR WASH'])]['prodcategoryname'].unique()
-    #     print(unique_categories.shape[0])
-    #     topics, probs = topic_model.transform(unique_categories)
-    #     topic_model_df = topic_model.get_topic_info().set_index('Topic')
-    #     mapping = {
-    #         cat: topic_model_df.loc[topic, 'Name'][topic_model_df.loc[topic, 'Name'].find('_')+len('_'):] for cat, topic in zip(unique_categories, topics)
-    #     }
-    #     self.sales['prodcatbroad'] = self.sales['prodcategoryname'].apply(lambda x: 'fuel' if x == 'FUELS' else 'car_wash' if x == 'CAR WASH' else mapping[x])
-    #     return self.sales
+    def extract_topic_modelling_features(self):
+        '''
+        Method to cluster categories of `sales['prodcategoryname']` through pre-trained topic modelling model
+        Currently unused, since features turned out to be unrepresentative in terms of variety of relationship between classes of target variable
+        '''
+        login(token=self.huggingface_token)
+        topic_model = BERTopic.load(self.huggingface_model_repo)
+        logout()
+        unique_categories = self.sales[~self.sales['prodcategoryname'].isin(['FUELS', 'CAR WASH'])]['prodcategoryname'].unique()
+        topics, probs = topic_model.transform(unique_categories)
+        topic_model_df = topic_model.get_topic_info().set_index('Topic')
+        mapping = {
+            cat: topic_model_df.loc[topic, 'Name'][topic_model_df.loc[topic, 'Name'].find('_')+len('_'):] for cat, topic in zip(unique_categories, topics)
+        }
+        self.sales['prodcatbroad'] = self.sales['prodcategoryname'].apply(
+            lambda x: 'fuel_qty' if x == 'FUELS' else 'car_wash_qty' if x == 'CAR WASH' else f'{mapping[x]}_qty'
+        )
+        return self.sales
 
 
     def merge_dataframes(self):
@@ -440,6 +451,12 @@ class FeatureExtractor:
         Implements the functionality of `pandas.pivot_table` but also allows to rename columns of transformed dataframe with desired `prefix`
         Inputs to these method are passed from `customer_level_features` array, which is passed to the constructor
         '''
+        try:
+            # Aggregate function is not a keyword (e.g. string `'pd.Series.nunique'`)
+            aggfunc = eval(aggfunc)
+        except NameError:
+            # Aggregate function is a keyword (e.g. 'mean')
+            pass
         pivot = pd.pivot_table(
             data,
             values,

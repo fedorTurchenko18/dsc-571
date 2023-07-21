@@ -2,14 +2,32 @@
 # This config contains default values of these corresponding arguments
 
 lambda_features:
-  prodcategoryname:
-    new_feature_name: 'prodcatbroad'
-    lambda_func: "lambda x: 'fuel_qty' if x == 'FUELS' else 'car_wash_qty' if x == 'CAR WASH' else 'convenience_store_qty'"
+  # - 'initial_col': 'prodcategoryname'
+  #   'feature_name': 'prodcatbroad'
+  #   'lambda_func': "lambda x: 'fuel_qty' if x == 'FUELS' else 'car_wash_qty' if x == 'CAR WASH' else 'convenience_store_qty'"
 
-  receiptdate:
-    new_feature_name: 'weekday'
-    lambda_func: "lambda x: 'weekend_qty' if x.day_name() in ['Saturday', 'Sunday'] else 'weekday_qty'"
+  - 'initial_col': 'receiptdate'
+    'feature_name': 'weekday'
+    'lambda_func': "lambda x: 'weekend_qty' if x.day_name() in ['Saturday', 'Sunday'] else 'weekday_qty'"
 
+  - 'initial_col': 'prodcatbroad'
+    'feature_name': 'labour_cards_catalogue_consumables'
+    'lambda_func': "lambda x: 1 if 'labour_cards_catalogue_consumables' in x else 0"
+
+
+groupby_features:
+  - 'groupcol': 'ciid'
+    'aggcol': 'receiptdate'
+    'aggfunc': "lambda x: ((x.min()+timedelta(days=30))-x.max()).days"
+    'to_frame_name': 'recency'
+
+  - 'groupcol': 'receiptid'
+    'aggcol': 'prodcategoryname'
+    'aggfunc': "lambda x: 0 if 'FUELS' in x.unique() else 1"
+    'to_frame_name': 'full_non_fuel_purchase'
+
+
+# Every new feature is added to the final dataframe through "pivoting", i.e. aggregating on customer level
 customer_level_features:
   - 'columns': 'prodcatbroad'
     'values': 'qty'
@@ -57,6 +75,17 @@ customer_level_features:
     'index': 'ciid'
     'aggfunc': 'mean'
 
+  - 'columns': null
+    'values': 'labour_cards_catalogue_consumables'
+    'index': 'ciid'
+    'aggfunc': "lambda x: 1 if 1 in x.values else 0"
+
+  - 'columns': null
+    'values': 'full_non_fuel_purchase'
+    'index': 'ciid'
+    'aggfunc': "lambda x: 1 if 1 in x.values else 0"
+
+
 # Do not forget to add here the names of the final new column(s)
 current_features:
   - 'fuel_qty'
@@ -72,16 +101,12 @@ current_features:
   - 'average_days_between_visits'
   - 'recency'
   - 'last_purchase_share'
+  - 'labour_cards_catalogue_consumables'
+  - 'full_non_fuel_purchase'
+
 
 train_test_split_params: 
   'test_size': 0.25
   'random_state': 571
   # Data is sorted by date => need to shuffle
   'shuffle': True
-
-# Currently unused
-# In future, if used, store in .env
-# This is to note only
-huggingface:
-  token: null
-  model_repo: null
