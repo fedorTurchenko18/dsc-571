@@ -1,6 +1,6 @@
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import OneHotEncoder
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Union
 import pandas as pd
 
 class CustomColumnTransformer(BaseEstimator, TransformerMixin):
@@ -10,10 +10,10 @@ class CustomColumnTransformer(BaseEstimator, TransformerMixin):
     '''
     def __init__(
             self,
-            cols_for_scaling: List[str],
-            cols_for_ohe: List[str],
+            cols_for_scaling: Union[List[str], None],
+            cols_for_ohe: Union[List[str], None],
             scaling_algo: Literal['sklearn-scaling-algorithm'],
-            cols_to_skip: Optional[List[str]] = None,
+            cols_to_skip: Union[List[str], None],
     ):
         '''
         `cols_for_scaling` - numeric columns to pass to a scaling algorithm \n
@@ -41,24 +41,25 @@ class CustomColumnTransformer(BaseEstimator, TransformerMixin):
         '''
         Method to apply all necessary transformations
         '''
-        ohe = OneHotEncoder()
-        X_ohe = ohe.fit_transform(X[self.cols_for_ohe])
-        X_scaled = self.scaling_algo.fit_transform(X[self.cols_for_scaling])
+        dataframes = []
+        if self.cols_for_ohe:
+            ohe = OneHotEncoder()
+            dataframes.append(
+                pd.DataFrame(
+                    ohe.fit_transform(X[self.cols_for_ohe]).toarray(),
+                    columns=ohe.get_feature_names_out(self.cols_for_ohe)
+                ).reset_index(drop=True)
+            )
+        
+        if self.cols_for_scaling:
+            dataframes.append(
+                pd.DataFrame(
+                    self.scaling_algo.fit_transform(X[self.cols_for_scaling]),
+                    columns=self.scaling_algo.get_feature_names_out(self.cols_for_scaling)
+                ).reset_index(drop=True)
+            )
 
-        if not self.cols_to_skip:
-            return pd.concat(
-            [
-                pd.DataFrame(X_scaled, columns=self.scaling_algo.get_feature_names_out(self.cols_for_scaling)).reset_index(drop=True),
-                pd.DataFrame(X_ohe.toarray(), columns=ohe.get_feature_names_out(self.cols_for_ohe)).reset_index(drop=True)
-            ],
-            axis=1
-        )
-        else:
-            return pd.concat(
-            [
-                X[self.cols_to_skip].reset_index(drop=True),
-                pd.DataFrame(X_scaled, columns=self.scaling_algo.get_feature_names_out(self.cols_for_scaling)).reset_index(drop=True),
-                pd.DataFrame(X_ohe, columns=ohe.get_feature_names_out(self.cols_for_ohe)).reset_index(drop=True)
-            ],
-            axis=1
-        )
+        if self.cols_to_skip:
+            dataframes.append(X[self.cols_to_skip].reset_index(drop=True))
+
+        return pd.concat(dataframes, axis=1)
