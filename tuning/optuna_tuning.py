@@ -1,14 +1,13 @@
 import optuna, numpy as np
-from sklearn.metrics import accuracy_score
 
 
 class OptunaTuner:
-    def __init__(self, model) -> None:
+    def __init__(self, model, error_metric) -> None:
         """
         Class constructor
         """
         self.model = model
-        self.error_metric = accuracy_score
+        self.error_metric = error_metric
         optuna.logging.set_verbosity(0)
 
     def fit(self, n_trials: int, X_train: np.ndarray, y_train: np.ndarray, X_test: np.ndarray, y_test: np.ndarray, *args) -> None:
@@ -49,7 +48,7 @@ class OptunaTuner:
             error = self.error_metric(y_test, y_pred)
             return error
 
-        study = optuna.create_study()
+        study = optuna.create_study(direction='maximize')
         study.optimize(lambda trial: objective(trial, *args), n_trials, n_jobs=7)
 
         model = self.model()
@@ -57,3 +56,4 @@ class OptunaTuner:
         model.fit(X_train, y_train)
 
         self.model = model
+        self.study = study
