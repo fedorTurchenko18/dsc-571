@@ -13,7 +13,7 @@ class CustomColumnTransformer(BaseEstimator, TransformerMixin):
             cols_for_scaling: Union[List[str], None],
             cols_for_ohe: Union[List[str], None],
             scaling_algo: Literal['sklearn-scaling-algorithm'],
-            cols_to_skip: Union[List[str], None],
+            cols_to_skip: Union[List[str], None]
     ):
         '''
         `cols_for_scaling` - numeric columns to pass to a scaling algorithm \n

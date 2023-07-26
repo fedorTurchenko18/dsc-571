@@ -16,6 +16,7 @@ lambda_features:
 
 
 groupby_features:
+# Note that `aggfunc` should be declared as a function only, not keyword
   - 'groupcol': 'ciid'
     'aggcol': 'receiptdate'
     'aggfunc': "lambda x: ((x.min()+timedelta(days=30))-x.max()).days"
@@ -25,6 +26,11 @@ groupby_features:
     'aggcol': 'prodcategoryname'
     'aggfunc': "lambda x: 0 if 'FUELS' in x.unique() else 1"
     'to_frame_name': 'full_non_fuel_purchase'
+
+  - 'groupcol': 'ciid'
+    'aggcol': 'qty'
+    'aggfunc': 'np.mean'
+    'to_frame_name': 'monetary'
 
 
 # Every new feature is added to the final dataframe through "pivoting", i.e. aggregating on customer level
@@ -49,11 +55,11 @@ customer_level_features:
     'index': 'ciid'
     'aggfunc': 'sum'
 
-  - 'columns': 'breaks'
-    'values': 'qty'
-    'index': 'ciid'
-    'aggfunc': 'sum'
-    'prefix': 'qty'
+  # - 'columns': 'breaks'
+  #   'values': 'qty'
+  #   'index': 'ciid'
+  #   'aggfunc': 'sum'
+  #   'prefix': 'qty'
 
   - 'columns': null
     'values': 'target'
@@ -85,6 +91,11 @@ customer_level_features:
     'index': 'ciid'
     'aggfunc': "lambda x: 1 if 1 in x.values else 0"
 
+  - 'columns': null
+    'values': 'monetary'
+    'index': 'ciid'
+    'aggfunc': 'mean'
+
 
 # Do not forget to add here the names of the final new column(s)
 current_features:
@@ -94,12 +105,13 @@ current_features:
   - 'usual_hours_qty'
   - 'weekday_qty'
   - 'weekend_qty'
-  - 'qty_1-7'
-  - 'qty_8-14'
-  - 'qty_15-21'
-  - 'qty_22-28'
-  - 'average_days_between_visits'
-  - 'recency'
+  # - 'qty_1-7'
+  # - 'qty_8-14'
+  # - 'qty_15-21'
+  # - 'qty_22-28'
+  # - 'average_days_between_visits'
+  # - 'recency'
+  - 'segments'
   - 'last_purchase_share'
   - 'labour_cards_catalogue_consumables'
   - 'full_non_fuel_purchase'

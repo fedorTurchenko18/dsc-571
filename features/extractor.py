@@ -2,12 +2,14 @@ import pandas as pd
 import numpy as np
 import warnings
 import yaml
+import pickle
 
 from configs import settings
 from datetime import datetime, timedelta
 from typing import Annotated, Callable, Union, List
 from dataclasses import dataclass
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 
 from bertopic import BERTopic
 from huggingface_hub import login, logout
@@ -119,7 +121,7 @@ class FeatureExtractor:
         self.sales = self.extract_training_period()
 
         # Define weekly sub-periods for each user
-        self.sales = self.extract_subperiods()
+        # self.sales = self.extract_subperiods()
 
         # These features have unique extraction algorithms, so they are generated independently
         self.sales = self.extract_days_between_visits()
@@ -152,6 +154,7 @@ class FeatureExtractor:
                 )
             )
         df_customer_level = pd.concat(pivot_tables, axis=1).reset_index()
+        df_customer_level = self.extract_clustering_feature(df_customer_level)
         try:
             X = df_customer_level[self.current_features].fillna(0)
         except KeyError:
@@ -178,10 +181,17 @@ class FeatureExtractor:
         self.sales['receiptdate'] = pd.to_datetime(self.sales['receiptdate'])
         
         # if clause is needed to ensure the transformation is performed only on train set
-        if self.sales['receiptdate'].min() < datetime(2021, 6, 1, 0, 0, 0):
-            return self.sales[
-                self.sales['receiptdate'] >= datetime(2021, 6, 1, 0, 0, 0)
-            ]
+        # if self.sales['receiptdate'].min() < datetime(2021, 6, 1, 0, 0, 0):
+        #     return self.sales[
+        #         self.sales['receiptdate'] >= datetime(2021, 6, 1, 0, 0, 0)
+        #     ]
+        return self.sales[
+            self.sales['ciid'].isin(
+                self.customers[
+                    self.customers['accreccreateddate'] >= datetime(2021, 6, 1, 0, 0, 0)
+                ]['ciid']
+            )
+        ]
 
 
     def extract_target(self):
@@ -425,6 +435,47 @@ class FeatureExtractor:
             lambda x: 'fuel_qty' if x == 'FUELS' else 'car_wash_qty' if x == 'CAR WASH' else f'{mapping[x]}_qty'
         )
         return self.sales
+    
+
+    def extract_clustering_feature(self, df_customer_level: pd.DataFrame):
+        '''
+        Method to extract clusters (i.e. customer segments) based on RFM variables
+        TODO: add extended docstring
+        '''
+        # Load clustering model
+        with open('./features/clustering_model.pkl', 'rb') as f:
+            model = pickle.load(f)
+        # Load `scipy.stats.mstats.winsorize` output object to define threshold for the `monetary` variable
+        with open('./features/winsorizing_object_for_threshold.pkl', 'rb') as f:
+            winsor = pickle.load(f)
+        X_clust = df_customer_level[['monetary', 'recency', 'average_days_between_visits']]
+        monetary_threshold = winsor.max()
+        # Perform winsorization
+        X_clust.loc[X_clust['monetary'] > monetary_threshold, 'monetary'] = monetary_threshold
+        scaler = StandardScaler()
+        labels = pd.Categorical(
+            model.predict(
+                scaler.fit_transform(X_clust)
+            )
+        )
+        df_customer_level['segments'] = labels
+        df_customer_level['segments'] = df_customer_level['segments'].cat.rename_categories({0: 'frequent_drivers', 1: 'passerbys', 2: 'regular_drivers'})
+        return df_customer_level
+    
+
+    def perform_train_test_split(self, X: pd.DataFrame, y: pd.DataFrame):
+        '''
+        Separate method to implement `sklearn.train_test_split` with pre-selected params
+        if `FeatureExctractor(..., perform_split=False)` was called
+
+        X, y - outputs of `FeatureExctractor(..., perform_split=False).transform()` method
+        '''
+        X_train, X_test, y_train, y_test = train_test_split(
+                X,
+                y,
+                **self.train_test_split_params
+            )
+        return X_train, X_test, y_train, y_test
 
 
     def merge_dataframes(self):
