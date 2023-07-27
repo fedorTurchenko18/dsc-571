@@ -6,7 +6,7 @@ import pickle
 
 from configs import settings
 from datetime import datetime, timedelta
-from typing import Annotated, Callable, Union, List
+from typing import Annotated, Callable, Union, List, Literal
 from dataclasses import dataclass
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -38,8 +38,8 @@ class FeatureExtractor:
     def __init__(
             self,
             sales: pd.DataFrame,
-            # `customers` dataset is currently considered to be useless for feature generation
-            customers: pd.DataFrame = None,
+            customers: pd.DataFrame,
+            generation_type: Union[Literal['continuous'], Literal['categorical']],
             period: Annotated[int, PeriodValueRange(7, float('inf'))] = 30,
             target_month: Annotated[int, PeriodValueRange(1, float('inf'))] = 3,
             perform_split: bool = True,
@@ -91,6 +91,7 @@ class FeatureExtractor:
         '''
         self.sales = sales
         self.customers = customers
+        self.generation_type = generation_type
         self.period = period
         self.target_month = target_month
         self.perform_split = perform_split
@@ -146,7 +147,7 @@ class FeatureExtractor:
 
         # Perform transition to customer level
         pivot_tables = []
-        for feature in self.customer_level_features:
+        for feature in self.customer_level_features[self.generation_type]:
             pivot_tables.append(
                 self.pivot_table(
                     self.sales,
@@ -155,11 +156,18 @@ class FeatureExtractor:
             )
         df_customer_level = pd.concat(pivot_tables, axis=1).reset_index()
         df_customer_level = self.extract_clustering_feature(df_customer_level)
+        df_customer_level = pd.concat(
+            [
+                df_customer_level.select_dtypes(exclude='category').fillna(0),
+                df_customer_level.select_dtypes(include='category')
+            ],
+            axis=1
+        )
         try:
-            X = df_customer_level[self.current_features].fillna(0)
-        except KeyError:
+            X = df_customer_level[self.current_features[self.generation_type]]
+        except KeyError as e:
             warnings.warn('Certain columns, specified in `current_features` list of class constructor, do not exist. Full dataframe will be returned')
-            X = df_customer_level.fillna(0)
+            X = df_customer_level
         y = df_customer_level['target']
         
         if self.perform_split:
@@ -459,7 +467,7 @@ class FeatureExtractor:
             )
         )
         df_customer_level['segments'] = labels
-        df_customer_level['segments'] = df_customer_level['segments'].cat.rename_categories({0: 'frequent_drivers', 1: 'passerbys', 2: 'regular_drivers'})
+        df_customer_level['segments'] = df_customer_level['segments'].cat.rename_categories({2: 'frequent_drivers', 1: 'passerbys', 0: 'regular_drivers'})
         return df_customer_level
     
 
