@@ -1,5 +1,6 @@
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import OneHotEncoder
+from scipy.stats.mstats import winsorize
 from typing import List, Optional, Literal, Union
 import pandas as pd
 
@@ -13,6 +14,7 @@ class CustomColumnTransformer(BaseEstimator, TransformerMixin):
             cols_for_scaling: Union[List[str], None],
             cols_for_ohe: Union[List[str], None],
             scaling_algo: Literal['sklearn-scaling-algorithm'],
+            cols_for_winsor: Union[List[str], None],
             cols_to_skip: Union[List[str], None]
     ):
         '''
@@ -22,11 +24,14 @@ class CustomColumnTransformer(BaseEstimator, TransformerMixin):
 
         `scaling_algo` - scaling algorithm from `sklearn.preprocessing` module \n
 
+        `cols_for_scaling` - numeric columns to winsorize for outliers handling \n
+
         `cols_to_skip` - columns for which no transformation is needed
         '''
         self.cols_for_scaling = cols_for_scaling
         self.cols_for_ohe = cols_for_ohe
         self.scaling_algo = scaling_algo
+        self.cols_for_winsor = cols_for_winsor
         self.cols_to_skip = cols_to_skip
 
 
@@ -42,8 +47,13 @@ class CustomColumnTransformer(BaseEstimator, TransformerMixin):
         Method to apply all necessary transformations
         '''
         dataframes = []
+
+        if self.cols_for_winsor:
+            for col in self.cols_for_winsor:
+                X[col] = winsorize(X[col], limits=(0.0, 0.01))
+
         if self.cols_for_ohe:
-            ohe = OneHotEncoder()
+            ohe = OneHotEncoder(handle_unknown='ignore', min_frequency=0.001)
             dataframes.append(
                 pd.DataFrame(
                     ohe.fit_transform(X[self.cols_for_ohe]).toarray(),

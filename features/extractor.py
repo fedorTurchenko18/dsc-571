@@ -40,6 +40,7 @@ class FeatureExtractor:
             sales: pd.DataFrame,
             customers: pd.DataFrame,
             generation_type: Union[Literal['continuous'], Literal['categorical']],
+            filtering_set: Union[Literal['customers'], Literal['sales']],
             period: Annotated[int, PeriodValueRange(7, float('inf'))] = 30,
             target_month: Annotated[int, PeriodValueRange(1, float('inf'))] = 3,
             perform_split: bool = True,
@@ -92,6 +93,7 @@ class FeatureExtractor:
         self.sales = sales
         self.customers = customers
         self.generation_type = generation_type
+        self.filtering_set = filtering_set
         self.period = period
         self.target_month = target_month
         self.perform_split = perform_split
@@ -189,17 +191,19 @@ class FeatureExtractor:
         self.sales['receiptdate'] = pd.to_datetime(self.sales['receiptdate'])
         
         # if clause is needed to ensure the transformation is performed only on train set
-        # if self.sales['receiptdate'].min() < datetime(2021, 6, 1, 0, 0, 0):
-        #     return self.sales[
-        #         self.sales['receiptdate'] >= datetime(2021, 6, 1, 0, 0, 0)
-        #     ]
-        return self.sales[
-            self.sales['ciid'].isin(
-                self.customers[
-                    self.customers['accreccreateddate'] >= datetime(2021, 6, 1, 0, 0, 0)
-                ]['ciid']
-            )
-        ]
+        if self.sales['receiptdate'].min() < datetime(2021, 6, 1, 0, 0, 0):
+            if self.filtering_set == 'sales':
+                return self.sales[
+                    self.sales['receiptdate'] >= datetime(2021, 6, 1, 0, 0, 0)
+                ]
+            elif self.filtering_set == 'customers':
+                return self.sales[
+                    self.sales['ciid'].isin(
+                        self.customers[
+                            self.customers['accreccreateddate'] >= datetime(2021, 6, 1, 0, 0, 0)
+                        ]['ciid']
+                    )
+                ]
 
 
     def extract_target(self):
