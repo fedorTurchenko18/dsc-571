@@ -171,6 +171,10 @@ class FeatureExtractor:
             warnings.warn('Certain columns, specified in `current_features` list of class constructor, do not exist. Full dataframe will be returned')
             X = df_customer_level
         y = df_customer_level['target']
+
+        if self.generation_type == 'categorical':
+            cat_cols = X.select_dtypes(include=['int64', 'object']).columns
+            X[cat_cols] = X.select_dtypes(include=['int64', 'object']).astype('category')
         
         if self.perform_split:
             X_train, X_test, y_train, y_test = train_test_split(
