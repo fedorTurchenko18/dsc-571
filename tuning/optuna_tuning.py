@@ -7,7 +7,8 @@ class OptunaTuner:
             self,
             model: Literal['sklearn-model-object'],
             error_metric: Callable,
-            direction: Union[Literal['maximize'], Literal['minimize']]
+            direction: Union[Literal['maximize'], Literal['minimize']],
+            **model_params
     ) -> None:
         """
         Class constructor
@@ -21,8 +22,11 @@ class OptunaTuner:
 
         `direction`: str
             Either to maximize or minimize performance metric
+        
+        `model_params`: kwargs
+            Keyword arguments to be passed as default parameters of the specified model
         """
-        self.model = model
+        self.model = model(**model_params)
         self.error_metric = error_metric
         self.direction = direction
         optuna.logging.set_verbosity(0)
