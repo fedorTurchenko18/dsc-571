@@ -42,6 +42,7 @@ class FeatureExtractor:
             generation_type: Union[Literal['continuous'], Literal['categorical']],
             filtering_set: Union[Literal['customers'], Literal['sales']],
             period: Annotated[int, PeriodValueRange(7, float('inf'))] = 30,
+            subperiod: Annotated[int, PeriodValueRange(7, float('inf'))] = None,
             target_month: Annotated[int, PeriodValueRange(1, float('inf'))] = 3,
             perform_split: bool = True,
             groupby_features = GROUPBY_FEATURES,
@@ -55,11 +56,17 @@ class FeatureExtractor:
         '''
         `sales` - dataframe with transactional data \n
 
-        `customers` - [UNUSED] dataframe with customers-related data \n
+        `customers` - dataframe with customers-related data \n
+
+        `generation_type` - TODO: add docstring \n
+
+        `filtering_set` - TODO: add docstring \n
 
         `period` - period for feature extraction, 7 days at minimum; defaults to 30 days, starting from the first visit
             Some features are extracted weekly. For example if `period` = 30, these features will be extracted within sub-periods:
                 `[ [1st-7th], [8th-14th], [15th-21st]), [22nd-28th] ]` days
+
+        `subperiod` - TODO: add docstring
 
         `target_month` - consecutive month for which the prediction should be performed; defaults to the 3rd month of user activity \n
 
@@ -95,6 +102,7 @@ class FeatureExtractor:
         self.generation_type = generation_type
         self.filtering_set = filtering_set
         self.period = period
+        self.subperiod = subperiod
         self.target_month = target_month
         self.perform_split = perform_split
         self.groupby_features = groupby_features
@@ -124,7 +132,8 @@ class FeatureExtractor:
         self.sales = self.extract_training_period()
 
         # Define weekly sub-periods for each user
-        # self.sales = self.extract_subperiods()
+        if self.subperiod:
+            self.sales = self.extract_subperiods()
 
         # These features have unique extraction algorithms, so they are generated independently
         self.sales = self.extract_days_between_visits()
@@ -150,14 +159,51 @@ class FeatureExtractor:
         # Perform transition to customer level
         pivot_tables = []
         for feature in self.customer_level_features[self.generation_type]:
-            pivot_tables.append(
-                self.pivot_table(
-                    self.sales,
-                    **feature
+            if self.subperiod:
+                # Breakdown data by `self.subperiod`
+                current_column = feature['columns']
+                if current_column:
+                    # Check if `columns` argument value is not `None`
+                    # to assure pivoting with 'breaks'
+                    feature['columns'] = [current_column, 'breaks']
+                    pt = self.pivot_table(
+                        self.sales,
+                        **feature
+                    )
+                    pt.columns = [f'{feature_col}_{breakdown_col}' for feature_col, breakdown_col in zip(pt.columns.get_level_values(0), pt.columns.get_level_values(1))]
+                
+                else:
+                    current_value = feature['values']
+                    if current_value == 'target':
+                        # target variable cannot be broken down
+                        pt = self.pivot_table(
+                            self.sales,
+                            **feature
+                        )
+                    else:
+                        feature['columns'] = 'breaks'
+                        feature['prefix'] = current_value
+                        pt = self.pivot_table(
+                            self.sales,
+                            **feature
+                        )
+
+                pivot_tables.append(pt)
+            else:
+                pivot_tables.append(
+                    self.pivot_table(
+                        self.sales,
+                        **feature
+                    )
                 )
-            )
         df_customer_level = pd.concat(pivot_tables, axis=1).reset_index()
-        df_customer_level = self.extract_clustering_feature(df_customer_level)
+        if not self.subperiod:
+            # User segment cannot be interpreted at monthly level
+            df_customer_level = self.extract_clustering_feature(df_customer_level)
+        else:
+            # Add RFM features instead of segments
+            if self.generation_type=='continuous':
+                self.current_features[self.generation_type].extend(['monetary', 'recency', 'average_days_between_visits'])
         df_customer_level = pd.concat(
             [
                 df_customer_level.select_dtypes(exclude='category').fillna(0),
@@ -166,8 +212,13 @@ class FeatureExtractor:
             axis=1
         )
         try:
-            X = df_customer_level[self.current_features[self.generation_type]]
-        except KeyError as e:
+            final_cols = []
+            for col in df_customer_level.columns:
+                for comp_col in self.current_features[self.generation_type]:
+                    if comp_col in col:
+                        final_cols.append(col)
+            X = df_customer_level[final_cols]
+        except KeyError:
             warnings.warn('Certain columns, specified in `current_features` list of class constructor, do not exist. Full dataframe will be returned')
             X = df_customer_level
         y = df_customer_level['target']
@@ -254,13 +305,14 @@ class FeatureExtractor:
         '''
         Method to calculate sub-periods ranges for each user, append them as a column to the transactional dataset
         '''
-        self.sales = pd.concat(
-            [
-                self.sales.reset_index(drop=True),
-                self.sales.groupby('ciid')['receiptdate'].apply(self.cut_series, 7).to_frame('breaks').explode('breaks').reset_index(drop=True)
-            ],
-            axis=1
-        )
+        if self.subperiod:
+            self.sales = pd.concat(
+                [
+                    self.sales.reset_index(drop=True),
+                    self.sales.groupby('ciid')['receiptdate'].apply(self.cut_series, self.subperiod).to_frame('breaks').explode('breaks').reset_index(drop=True)
+                ],
+                axis=1
+            )
         return self.sales
     
 
@@ -425,13 +477,6 @@ class FeatureExtractor:
         )
         return self.sales
     
-
-    def to_customer_level(self, values: str, index: str, columns: str, aggfunc: Union[str, Callable]):
-        '''
-        Method to transform features into a format of final dataframe by aggregating data on customer level
-        '''
-        return pd.pivot_table(self.sales, values, index, columns, aggfunc).reset_index()
-
 
     def extract_topic_modelling_features(self):
         '''
