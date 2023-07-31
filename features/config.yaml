@@ -88,22 +88,22 @@ customer_level_features:
     - 'columns': 'prodcatbroad'
       'values': 'qty'
       'index': 'ciid'
-      'aggfunc': 'pd.Series.nunique'
+      'aggfunc': 'sum'
 
     - 'columns': 'peak_hour'
       'values': 'qty'
       'index': 'ciid'
-      'aggfunc': 'pd.Series.nunique'
+      'aggfunc': 'sum'
 
     - 'columns': 'weekday'
       'values': 'qty'
       'index': 'ciid'
-      'aggfunc': 'pd.Series.nunique'
+      'aggfunc': 'sum'
 
     - 'columns': 'fuel_type'
       'values': 'qty'
       'index': 'ciid'
-      'aggfunc': 'pd.Series.nunique'
+      'aggfunc': 'sum'
 
     - 'columns': null
       'values': 'target'
@@ -141,8 +141,6 @@ customer_level_features:
       'aggfunc': "lambda x: 1 if 1 in x.values else 0"
 
 
-
-# Do not forget to add here the names of the final new column(s)
 current_features:
 
   categorical:
@@ -165,7 +163,9 @@ current_features:
     - 'last_purchase_share'
     - 'full_non_fuel_purchase'
     - 'segments'
-  
+    - 'monetary'
+    - 'recency'
+    - 'average_days_between_visits'
 
 
 train_test_split_params: 
