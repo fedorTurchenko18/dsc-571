@@ -8,7 +8,7 @@ class OptunaTuner:
             model: Literal['sklearn-model-object'],
             error_metric: Callable,
             direction: Union[Literal['maximize'], Literal['minimize']],
-            **model_params
+            **fixed_params
     ) -> None:
         """
         Class constructor
@@ -26,9 +26,10 @@ class OptunaTuner:
         `model_params`: kwargs
             Keyword arguments to be passed as default parameters of the specified model
         """
-        self.model = model(**model_params)
+        self.model = model
         self.error_metric = error_metric
         self.direction = direction
+        self.fixed_params = fixed_params
         optuna.logging.set_verbosity(0)
 
     def fit(self, n_trials: int, X_train: np.ndarray, y_train: np.ndarray, X_test: np.ndarray, y_test: np.ndarray, *args) -> None:
@@ -95,7 +96,7 @@ class OptunaTuner:
                 # Account for the case when the object passed is not callable
                 # e.g. `sklearn.pipeline.Pipeline`
                 model = self.model
-            model.set_params(**params)
+            model.set_params(**{**params, **self.fixed_params})
             model.fit(X_train, y_train)
 
             y_pred = model.predict(X_test)
