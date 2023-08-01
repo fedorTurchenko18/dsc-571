@@ -240,7 +240,10 @@ class FeatureExtractor:
         y = df_customer_level['target']
 
         if self.generation_type == 'categorical':
-            # Convert breakdown cols to integer first
+            # Change type of last_purchase_share to set it aside from breakdown columns
+            last_purchase_share_cols = [col for col in X.columns if 'last_purchase_share' in col]
+            X[last_purchase_share_cols] = X[last_purchase_share_cols].astype('float32')
+            # Convert breakdown columns to integer
             float_cols = X.select_dtypes(include=['float64']).columns
             X[float_cols] = X[float_cols].astype('int16')
             # Convert to categorical format for `catboost` proper interpetation of these
