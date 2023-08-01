@@ -13,11 +13,7 @@ lambda_features:
 
 
 groupby_features:
-# Note that `aggfunc` should be declared as a function only, not keyword
-  - 'groupcol': 'ciid'
-    'aggcol': 'receiptdate'
-    'aggfunc': "lambda x: ((x.min()+timedelta(days=30))-x.max()).days"
-    'to_frame_name': 'recency'
+# Note that `aggfunc` should be declared as a callable only, not keyword
 
   - 'groupcol': 'receiptid'
     'aggcol': 'prodcategoryname'
@@ -162,10 +158,6 @@ current_features:
     - 'labour_cards_catalogue_consumables'
     - 'last_purchase_share'
     - 'full_non_fuel_purchase'
-    - 'segments'
-    - 'monetary'
-    - 'recency'
-    - 'average_days_between_visits'
 
 
 train_test_split_params: 

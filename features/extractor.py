@@ -140,6 +140,7 @@ class FeatureExtractor:
         self.sales = self.extract_peak_hours()
         self.sales = self.extract_last_purchase_share()
         self.sales = self.extract_topic_modelling_features()
+        self.sales = self.extract_recency()
 
         #Extract "groupby" features
         for feature in self.groupby_features:
@@ -198,8 +199,9 @@ class FeatureExtractor:
                 )
         df_customer_level = pd.concat(pivot_tables, axis=1).reset_index()
         if not self.subperiod:
-            # User segment cannot be interpreted at monthly level
+            # User segment cannot be interpreted at monthly level - only on aggregate
             df_customer_level = self.extract_clustering_feature(df_customer_level)
+            self.current_features.append('segments')
         else:
             # Add RFM features instead of segments
             if self.generation_type=='continuous':
@@ -305,14 +307,14 @@ class FeatureExtractor:
         '''
         Method to calculate sub-periods ranges for each user, append them as a column to the transactional dataset
         '''
-        if self.subperiod:
-            self.sales = pd.concat(
-                [
-                    self.sales.reset_index(drop=True),
-                    self.sales.groupby('ciid')['receiptdate'].apply(self.cut_series, self.subperiod).to_frame('breaks').explode('breaks').reset_index(drop=True)
-                ],
-                axis=1
-            )
+        self.sales.sort_values(['ciid', 'receiptdate'])
+        self.sales = pd.concat(
+            [
+                self.sales.reset_index(drop=True),
+                self.sales.groupby('ciid')['receiptdate'].apply(self.cut_series, self.subperiod).to_frame('breaks').explode('breaks').reset_index(drop=True)
+            ],
+            axis=1
+        )
         return self.sales
     
 
@@ -335,7 +337,7 @@ class FeatureExtractor:
             # If only less or equal a week remained after filtering, only 1 week fits in the date range for a user
             total_periods = 1
         else:
-            total_periods = np.floor(dates_diff / days)
+            total_periods = np.ceil(dates_diff / days)
         interval_idx = pd.interval_range(start=s.min(), end=s.max(), periods=total_periods, closed='left')
 
         date_ranges = []
@@ -388,11 +390,18 @@ class FeatureExtractor:
 
         # Visit - unique `receiptdate` entry
         # Therefore, drop duplicates of this column for each user
-        tmp = self.sales.drop_duplicates(['ciid', 'receiptdate'])\
-                .sort_values(['ciid', 'receiptdate'])\
-                    .groupby('ciid')\
-                        .agg(days_between_visits = pd.NamedAgg('receiptdate', pd.Series.diff))\
-                            .reset_index()
+        if self.subperiod:
+            tmp = self.sales.drop_duplicates(['ciid', 'receiptdate'])\
+                    .sort_values(['ciid', 'receiptdate'])\
+                        .groupby(['ciid', 'breaks'])\
+                            .agg(days_between_visits = pd.NamedAgg('receiptdate', pd.Series.diff))\
+                                .reset_index()
+        else:
+            tmp = self.sales.drop_duplicates(['ciid', 'receiptdate'])\
+                    .sort_values(['ciid', 'receiptdate'])\
+                        .groupby('ciid')\
+                            .agg(days_between_visits = pd.NamedAgg('receiptdate', pd.Series.diff))\
+                                .reset_index()
         tmp['average_days_between_visits'] = tmp['days_between_visits'].apply(compute_average)
 
         self.sales = pd.merge(
@@ -424,20 +433,36 @@ class FeatureExtractor:
         '''
         TODO: add docstring
         '''
-        tmp = self.sales.groupby(['ciid', 'receiptdate']).agg({'qty': 'sum'}).reset_index()
-        tmp = pd.merge(
-            tmp.groupby('ciid').agg(amount_spent = pd.NamedAgg('qty', 'sum')),
-            tmp.loc[tmp.groupby('ciid')['receiptdate'].apply(pd.Series.idxmax).values, :][['ciid', 'qty']],
-            how='left',
-            on='ciid'
-        )
-        tmp['last_purchase_share'] = tmp['qty']/tmp['amount_spent']
-        self.sales = pd.merge(
-            self.sales,
-            tmp[['ciid', 'last_purchase_share']],
-            on='ciid',
-            how='left'
-        )
+        if self.subperiod:
+            tmp = self.sales.groupby(['ciid', 'receiptdate', 'breaks']).agg({'qty': 'sum'}).reset_index()
+            tmp = pd.merge(
+                tmp.groupby(['ciid', 'breaks']).agg(amount_spent = pd.NamedAgg('qty', 'sum')),
+                tmp.loc[tmp.groupby(['ciid', 'breaks'])['receiptdate'].apply(pd.Series.idxmax).values, :][['ciid', 'qty', 'breaks']],
+                how='left',
+                on=['ciid', 'breaks']
+            )
+            tmp['last_purchase_share'] = tmp['qty']/tmp['amount_spent']
+            self.sales = pd.merge(
+                self.sales,
+                tmp[['ciid', 'last_purchase_share', 'breaks']],
+                on=['ciid', 'breaks'],
+                how='left'
+            )
+        else:
+            tmp = self.sales.groupby(['ciid', 'receiptdate']).agg({'qty': 'sum'}).reset_index()
+            tmp = pd.merge(
+                tmp.groupby('ciid').agg(amount_spent = pd.NamedAgg('qty', 'sum')),
+                tmp.loc[tmp.groupby('ciid')['receiptdate'].apply(pd.Series.idxmax).values, :][['ciid', 'qty']],
+                how='left',
+                on='ciid'
+            )
+            tmp['last_purchase_share'] = tmp['qty']/tmp['amount_spent']
+            self.sales = pd.merge(
+                self.sales,
+                tmp[['ciid', 'last_purchase_share']],
+                on='ciid',
+                how='left'
+            )
         return self.sales
 
 
@@ -446,13 +471,22 @@ class FeatureExtractor:
         TODO: add docstring
         '''
         aggfunc = eval(aggfunc)
-        tmp = self.sales.groupby(groupcol)[aggcol].apply(aggfunc).to_frame(to_frame_name).reset_index()
-        self.sales = pd.merge(
-            self.sales,
-            tmp,
-            how='left',
-            on=groupcol
-        )
+        if self.subperiod:
+            tmp = self.sales.groupby([groupcol, 'breaks'])[aggcol].apply(aggfunc).to_frame(to_frame_name).reset_index()
+            self.sales = pd.merge(
+                self.sales,
+                tmp,
+                how='left',
+                on=[groupcol, 'breaks']
+            )
+        else:
+            tmp = self.sales.groupby(groupcol)[aggcol].apply(aggfunc).to_frame(to_frame_name).reset_index()
+            self.sales = pd.merge(
+                self.sales,
+                tmp,
+                how='left',
+                on=groupcol
+            )
         return self.sales
 
 
@@ -475,6 +509,33 @@ class FeatureExtractor:
             self.sales['prodcatbroad'] == 'fuel_qty',
             self.sales['proddesc'].str.lower().str.replace(' ', '_') + '_qty', 'other'
         )
+        return self.sales
+    
+
+    def extract_recency(self):
+        '''
+        TODO: add docstring
+        '''
+        if self.subperiod:
+            tmp = self.sales.groupby(['ciid', 'breaks'])['receiptdate']\
+                .apply(lambda x: ((x.min()+timedelta(days=self.subperiod))-x.max()).days)\
+                    .to_frame('recency').reset_index()
+            self.sales = pd.merge(
+                self.sales,
+                tmp,
+                how='left',
+                on=['ciid', 'breaks']
+            )
+        else:
+            tmp = self.sales.groupby('ciid')['receiptdate']\
+                .apply(lambda x: ((x.min()+timedelta(days=self.subperiod))-x.max()).days)\
+                    .to_frame('recency').reset_index()
+            self.sales = pd.merge(
+                self.sales,
+                tmp,
+                how='left',
+                on='ciid'
+            )
         return self.sales
     
 
