@@ -174,14 +174,29 @@ class FeatureExtractor:
                     pt.columns = [f'{feature_col}_{breakdown_col}' for feature_col, breakdown_col in zip(pt.columns.get_level_values(0), pt.columns.get_level_values(1))]
                 
                 else:
+                    # `columns` argument value is `None`
                     current_value = feature['values']
-                    if current_value == 'target':
+                    if (
+                        current_value == 'target'
+                        or
+                        (
+                            current_value in ['recency', 'average_days_between_visits', 'monetary']
+                            and
+                            self.generation_type == 'categorical'
+                        )
+                    ):
                         # target variable cannot be broken down
+                            # AND #
+                        # RFM features should be extracted in their initial form
+                        # to assure appropriate segments extraction
+                        # when calling clustering model
                         pt = self.pivot_table(
                             self.sales,
                             **feature
                         )
                     else:
+                        # RFM features are being broken down for `'continuous'` `generation_type`
+                        # as well as other features with `columns` argument value equal to `None`
                         feature['columns'] = 'breaks'
                         feature['prefix'] = current_value
                         pt = self.pivot_table(
@@ -191,6 +206,7 @@ class FeatureExtractor:
 
                 pivot_tables.append(pt)
             else:
+                # Do not breakdown data by subperiod
                 pivot_tables.append(
                     self.pivot_table(
                         self.sales,
@@ -198,14 +214,12 @@ class FeatureExtractor:
                     )
                 )
         df_customer_level = pd.concat(pivot_tables, axis=1).reset_index()
-        if not self.subperiod:
-            # User segment cannot be interpreted at monthly level - only on aggregate
+        if self.generation_type=='categorical':
+            # Segments are generated for categorical version of model only
             df_customer_level = self.extract_clustering_feature(df_customer_level)
-            self.current_features.append('segments')
         else:
-            # Add RFM features instead of segments
-            if self.generation_type=='continuous':
-                self.current_features[self.generation_type].extend(['monetary', 'recency', 'average_days_between_visits'])
+            # Add RFM features to the output feature list instead of segments for continuous features
+            self.current_features[self.generation_type].extend(['monetary', 'recency', 'average_days_between_visits'])
         df_customer_level = pd.concat(
             [
                 df_customer_level.select_dtypes(exclude='category').fillna(0),
@@ -226,8 +240,12 @@ class FeatureExtractor:
         y = df_customer_level['target']
 
         if self.generation_type == 'categorical':
-            cat_cols = X.select_dtypes(include=['int64', 'object']).columns
-            X[cat_cols] = X.select_dtypes(include=['int64', 'object']).astype('category')
+            # Convert breakdown cols to integer first
+            float_cols = X.select_dtypes(include=['float64']).columns
+            X[float_cols] = X[float_cols].astype('int16')
+            # Convert to categorical format for `catboost` proper interpetation of these
+            cat_cols = X.select_dtypes(include=['int16', 'object']).columns
+            X[cat_cols] = X[cat_cols].astype('category')
         
         if self.perform_split:
             X_train, X_test, y_train, y_test = train_test_split(
@@ -528,7 +546,7 @@ class FeatureExtractor:
             )
         else:
             tmp = self.sales.groupby('ciid')['receiptdate']\
-                .apply(lambda x: ((x.min()+timedelta(days=self.subperiod))-x.max()).days)\
+                .apply(lambda x: ((x.min()+timedelta(days=self.period))-x.max()).days)\
                     .to_frame('recency').reset_index()
             self.sales = pd.merge(
                 self.sales,
