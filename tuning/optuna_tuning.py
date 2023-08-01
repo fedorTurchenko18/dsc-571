@@ -110,7 +110,7 @@ class OptunaTuner:
             model = self.model()
         except TypeError:
             model = self.model
-        model.set_params(**study.best_params)
+        model.set_params(**{**study.best_params, **self.fixed_params})
         model.fit(X_train, y_train)
 
         self.model = model
