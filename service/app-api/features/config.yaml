@@ -1,0 +1,167 @@
+# Primary keys represent the names of `FeatureExtractor` class constructor arguments
+# This config contains default values of these corresponding arguments
+
+lambda_features:
+
+  - 'initial_col': 'receiptdate'
+    'feature_name': 'weekday'
+    'lambda_func': "lambda x: 'weekend_qty' if x.day_name() in ['Saturday', 'Sunday'] else 'weekday_qty'"
+
+  - 'initial_col': 'prodcatbroad'
+    'feature_name': 'labour_cards_catalogue_consumables'
+    'lambda_func': "lambda x: 1 if 'labour_cards_catalogue_consumables' in x else 0"
+
+
+groupby_features:
+# Note that `aggfunc` should be declared as a callable only, not keyword
+
+  - 'groupcol': 'receiptid'
+    'aggcol': 'prodcategoryname'
+    'aggfunc': "lambda x: 0 if 'FUELS' in x.unique() else 1"
+    'to_frame_name': 'full_non_fuel_purchase'
+
+  - 'groupcol': 'ciid'
+    'aggcol': 'qty'
+    'aggfunc': 'np.sum'
+    'to_frame_name': 'monetary'
+
+
+# Every new feature is added to the final dataframe through "pivoting", i.e. aggregating on customer level
+customer_level_features:
+
+  categorical:
+    - 'columns': null
+      'values': 'prodcatbroad'
+      'index': 'ciid'
+      'aggfunc': 'pd.Series.nunique'
+
+    - 'columns': null
+      'values': 'peak_hour'
+      'index': 'ciid'
+      'aggfunc': "lambda x: x.unique()[0] if len(x.unique())==1 else 'both'"
+
+    - 'columns': null
+      'values': 'weekday'
+      'index': 'ciid'
+      'aggfunc': "lambda x: x.unique()[0] if len(x.unique())==1 else 'both'"
+    
+    - 'columns': null
+      'values': 'fuel_type'
+      'index': 'ciid'
+      'aggfunc': 'pd.Series.nunique'
+
+    - 'columns': null
+      'values': 'target'
+      'index': 'ciid'
+      'aggfunc': 'mean'
+
+    - 'columns': null
+      'values': 'average_days_between_visits'
+      'index': 'ciid'
+      'aggfunc': 'mean'
+
+    - 'columns': null
+      'values': 'recency'
+      'index': 'ciid'
+      'aggfunc': 'mean'
+
+    - 'columns': null
+      'values': 'monetary'
+      'index': 'ciid'
+      'aggfunc': 'mean'
+
+    - 'columns': null
+      'values': 'last_purchase_share'
+      'index': 'ciid'
+      'aggfunc': 'mean'
+
+    - 'columns': null
+      'values': 'full_non_fuel_purchase'
+      'index': 'ciid'
+      'aggfunc': "lambda x: 1 if 1 in x.values else 0"
+
+  continuous:
+    - 'columns': 'prodcatbroad'
+      'values': 'qty'
+      'index': 'ciid'
+      'aggfunc': 'sum'
+
+    - 'columns': 'peak_hour'
+      'values': 'qty'
+      'index': 'ciid'
+      'aggfunc': 'sum'
+
+    - 'columns': 'weekday'
+      'values': 'qty'
+      'index': 'ciid'
+      'aggfunc': 'sum'
+
+    - 'columns': 'fuel_type'
+      'values': 'qty'
+      'index': 'ciid'
+      'aggfunc': 'sum'
+
+    - 'columns': null
+      'values': 'target'
+      'index': 'ciid'
+      'aggfunc': 'mean'
+
+    - 'columns': null
+      'values': 'average_days_between_visits'
+      'index': 'ciid'
+      'aggfunc': 'mean'
+
+    - 'columns': null
+      'values': 'recency'
+      'index': 'ciid'
+      'aggfunc': 'mean'
+
+    - 'columns': null
+      'values': 'monetary'
+      'index': 'ciid'
+      'aggfunc': 'mean'
+
+    - 'columns': null
+      'values': 'last_purchase_share'
+      'index': 'ciid'
+      'aggfunc': 'mean'
+
+    - 'columns': null
+      'values': 'labour_cards_catalogue_consumables'
+      'index': 'ciid'
+      'aggfunc': "lambda x: 1 if 1 in x.values else 0"
+
+    - 'columns': null
+      'values': 'full_non_fuel_purchase'
+      'index': 'ciid'
+      'aggfunc': "lambda x: 1 if 1 in x.values else 0"
+
+
+current_features:
+
+  categorical:
+    - 'prodcatbroad'
+    - 'peak_hour'
+    - 'weekday'
+    - 'fuel_type'
+    - 'last_purchase_share'
+    - 'full_non_fuel_purchase'
+    - 'segments'
+
+  continuous:
+    - 'fuel_qty'
+    - 'unleaded_95_qty'
+    - 'peak_hours_qty'
+    - 'usual_hours_qty'
+    - 'weekday_qty'
+    - 'weekend_qty'
+    - 'labour_cards_catalogue_consumables'
+    - 'last_purchase_share'
+    - 'full_non_fuel_purchase'
+
+
+train_test_split_params: 
+  'test_size': 0.25
+  'random_state': 571
+  # Data is sorted by date => need to shuffle
+  'shuffle': True
