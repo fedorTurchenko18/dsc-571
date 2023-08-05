@@ -3,6 +3,7 @@ import numpy as np
 import warnings
 import yaml
 import pickle
+import copy
 
 from configs import settings
 from datetime import datetime, timedelta
@@ -15,7 +16,7 @@ from bertopic import BERTopic
 from huggingface_hub import login, logout
 
 
-with open('features/config.yaml', 'r') as f:
+with open('service/app_api/features/config.yaml', 'r') as f:
     config = yaml.safe_load(f)
 
 
@@ -37,8 +38,8 @@ class FeatureExtractor:
 
     def __init__(
             self,
-            sales: pd.DataFrame,
-            customers: pd.DataFrame,
+            # sales: pd.DataFrame,
+            # customers: pd.DataFrame,
             generation_type: Union[Literal['continuous'], Literal['categorical']],
             filtering_set: Union[Literal['customers'], Literal['sales']],
             period: Annotated[int, PeriodValueRange(7, float('inf'))] = 30,
@@ -51,7 +52,8 @@ class FeatureExtractor:
             current_features: List[str] = CURRENT_FEATURES,
             train_test_split_params = TRAIN_TEST_SPLIT_PARAMS,
             huggingface_token = HUGGINGFACE_TOKEN,
-            huggingface_model_repo = HUGGINGFACE_MODEL_REPO
+            huggingface_model_repo = HUGGINGFACE_MODEL_REPO,
+            return_target: bool = True
         ):
         '''
         `sales` - dataframe with transactional data \n
@@ -97,8 +99,8 @@ class FeatureExtractor:
         
         `huggingface_model_repo` - [UNUSED] repository of the model for clustering `sales['prodcategoryname']` categories into broad ones
         '''
-        self.sales = sales
-        self.customers = customers
+        # self.sales = sales
+        # self.customers = customers
         self.generation_type = generation_type
         self.filtering_set = filtering_set
         self.period = period
@@ -112,9 +114,10 @@ class FeatureExtractor:
         self.train_test_split_params = train_test_split_params
         self.huggingface_token = huggingface_token
         self.huggingface_model_repo = huggingface_model_repo
+        self.return_target = return_target
 
     
-    def transform(self):
+    def transform(self, sales, customers):
         '''
         Main method, which wraps all the filterings, transformations, joins, extractions, etc.
         Returns:
@@ -122,44 +125,52 @@ class FeatureExtractor:
             y: pd.DataFrame - target variable
         '''
         # Remove data before June 2021
-        self.sales = self.filter_sales()
+        sales = self.filter_sales(sales, customers)
 
         # Extract target first, since then the data will only be limited to a first month of activity for each user
         # but target refers to the activity during `target_month` month
-        self.sales = self.extract_target()
+        customer_level_features = copy.deepcopy(self.customer_level_features[self.generation_type])
+        if self.return_target:
+            sales = self.extract_target(sales)
+        else:
+            for d in customer_level_features:
+                if d['values'] == 'target':
+                    customer_level_features.remove(d)
 
         # Leave only the first month of activity data for each user
-        self.sales = self.extract_training_period()
+        sales = self.extract_training_period(sales)
 
         # Define weekly sub-periods for each user
         if self.subperiod:
-            self.sales = self.extract_subperiods()
+            sales = self.extract_subperiods(sales)
 
         # These features have unique extraction algorithms, so they are generated independently
-        self.sales = self.extract_days_between_visits()
-        self.sales = self.extract_peak_hours()
-        self.sales = self.extract_last_purchase_share()
-        self.sales = self.extract_topic_modelling_features()
-        self.sales = self.extract_recency()
+        sales = self.extract_days_between_visits(sales)
+        sales = self.extract_peak_hours(sales)
+        sales = self.extract_last_purchase_share(sales)
+        sales = self.extract_topic_modelling_features(sales)
+        sales = self.extract_recency(sales)
 
         #Extract "groupby" features
         for feature in self.groupby_features:
-            self.sales = self.extract_feature_groupby(
+            sales = self.extract_feature_groupby(
+                sales,
                 **feature
             )
 
         # Extract "lambda" features
         for feature in self.lambda_features:
-            self.sales = self.extract_feature_lambda(
+            sales = self.extract_feature_lambda(
+                sales,
                 **feature
             )
 
         # Depends on `prodcatbroad` column, thus, executed after extraction of "lambda" features
-        self.sales = self.extract_fuel_type()
+        sales = self.extract_fuel_type(sales)
 
         # Perform transition to customer level
         pivot_tables = []
-        for feature in self.customer_level_features[self.generation_type]:
+        for feature in copy.copy(customer_level_features):
             if self.subperiod:
                 # Breakdown data by `self.subperiod`
                 current_column = feature['columns']
@@ -168,7 +179,7 @@ class FeatureExtractor:
                     # to assure pivoting with 'breaks'
                     feature['columns'] = [current_column, 'breaks']
                     pt = self.pivot_table(
-                        self.sales,
+                        sales,
                         **feature
                     )
                     pt.columns = [f'{feature_col}_{breakdown_col}' for feature_col, breakdown_col in zip(pt.columns.get_level_values(0), pt.columns.get_level_values(1))]
@@ -191,7 +202,7 @@ class FeatureExtractor:
                         # to assure appropriate segments extraction
                         # when calling clustering model
                         pt = self.pivot_table(
-                            self.sales,
+                            sales,
                             **feature
                         )
                     else:
@@ -200,16 +211,15 @@ class FeatureExtractor:
                         feature['columns'] = 'breaks'
                         feature['prefix'] = current_value
                         pt = self.pivot_table(
-                            self.sales,
+                            sales,
                             **feature
                         )
-
                 pivot_tables.append(pt)
             else:
                 # Do not breakdown data by subperiod
                 pivot_tables.append(
                     self.pivot_table(
-                        self.sales,
+                        sales,
                         **feature
                     )
                 )
@@ -237,7 +247,6 @@ class FeatureExtractor:
         except KeyError:
             warnings.warn('Certain columns, specified in `current_features` list of class constructor, do not exist. Full dataframe will be returned')
             X = df_customer_level
-        y = df_customer_level['target']
 
         if self.generation_type == 'categorical':
             # Change type of last_purchase_share to set it aside from breakdown columns
@@ -251,6 +260,7 @@ class FeatureExtractor:
             X[cat_cols] = X[cat_cols].astype('category')
         
         if self.perform_split:
+            y = df_customer_level['target']
             X_train, X_test, y_train, y_test = train_test_split(
                 X,
                 y,
@@ -258,45 +268,51 @@ class FeatureExtractor:
             )
             return X_train, X_test, y_train, y_test
         else:
-            return X, y
+            if self.return_target:
+                y = df_customer_level['target']
+                return X, y
+            else:
+                return X
 
 
-    def filter_sales(self):
+    def filter_sales(self, sales, customers):
         '''
         Method to filter the transactional training data
         Data before June 2021 is irrelevant due to Covid restrictions, etc.
         '''
-        self.sales['receiptdate'] = pd.to_datetime(self.sales['receiptdate'])
+        sales['receiptdate'] = pd.to_datetime(sales['receiptdate'])
         
         # if clause is needed to ensure the transformation is performed only on train set
-        if self.sales['receiptdate'].min() < datetime(2021, 6, 1, 0, 0, 0):
+        if sales['receiptdate'].min() < datetime(2021, 6, 1, 0, 0, 0):
             if self.filtering_set == 'sales':
-                return self.sales[
-                    self.sales['receiptdate'] >= datetime(2021, 6, 1, 0, 0, 0)
+                return sales[
+                    sales['receiptdate'] >= datetime(2021, 6, 1, 0, 0, 0)
                 ]
             elif self.filtering_set == 'customers':
-                return self.sales[
-                    self.sales['ciid'].isin(
-                        self.customers[
-                            self.customers['accreccreateddate'] >= datetime(2021, 6, 1, 0, 0, 0)
+                return sales[
+                    sales['ciid'].isin(
+                        customers[
+                            customers['accreccreateddate'] >= datetime(2021, 6, 1, 0, 0, 0)
                         ]['ciid']
                     )
                 ]
+        else:
+            return sales
 
 
-    def extract_target(self):
+    def extract_target(self, sales):
         '''
         Creates binary target variable, indicating if at least one transaction was recorded (`target = 1`) for a user
         at `self.target_month` month, starting from the first transaction
         Returns:
             `1 | 0`
         '''
-        self.sales = self.sales.sort_values(['ciid', 'receiptdate'])
+        sales = sales.sort_values(['ciid', 'receiptdate'])
 
-        self.sales = pd.concat(
+        sales = pd.concat(
             [
-                self.sales.reset_index(drop=True),
-                self.sales.groupby('ciid')['receiptdate'].apply(self.cut_series, 30).to_frame('months_enum').explode('months_enum').reset_index(drop=True)
+                sales.reset_index(drop=True),
+                sales.groupby('ciid')['receiptdate'].apply(self.cut_series, 30).to_frame('months_enum').explode('months_enum').reset_index(drop=True)
             ],
             axis=1
         )
@@ -304,39 +320,39 @@ class FeatureExtractor:
         def months_from_breaks(s):
             return np.int32(s.split('-')[1])/30
         
-        self.sales['months_enum'] = self.sales['months_enum'].apply(months_from_breaks)
-        mask = self.sales['ciid'].isin(self.sales[self.sales['months_enum']==self.target_month]['ciid'].unique())
+        sales['months_enum'] = sales['months_enum'].apply(months_from_breaks)
+        mask = sales['ciid'].isin(sales[sales['months_enum']==self.target_month]['ciid'].unique())
         mask.replace(True, 1, inplace=True)
         mask.replace(False, 0, inplace=True)
-        self.sales['target'] = mask
+        sales['target'] = mask
 
-        return self.sales
+        return sales
 
 
-    def extract_training_period(self):
+    def extract_training_period(self, sales):
         '''
         Method to filter transactional data with respect to the first `self.period` days for each user
         '''
         def filter_customer_transactions(s, period=self.period):
             return s <= (s.min()+timedelta(days=period))
-        mask = self.sales.groupby('ciid')['receiptdate'].apply(filter_customer_transactions)
-        self.sales = self.sales[mask]
-        return self.sales
+        mask = sales.groupby('ciid')['receiptdate'].apply(filter_customer_transactions)
+        sales = sales[mask]
+        return sales
 
 
-    def extract_subperiods(self):
+    def extract_subperiods(self, sales):
         '''
         Method to calculate sub-periods ranges for each user, append them as a column to the transactional dataset
         '''
-        self.sales.sort_values(['ciid', 'receiptdate'])
-        self.sales = pd.concat(
+        sales.sort_values(['ciid', 'receiptdate'])
+        sales = pd.concat(
             [
-                self.sales.reset_index(drop=True),
-                self.sales.groupby('ciid')['receiptdate'].apply(self.cut_series, self.subperiod).to_frame('breaks').explode('breaks').reset_index(drop=True)
+                sales.reset_index(drop=True),
+                sales.groupby('ciid')['receiptdate'].apply(self.cut_series, self.subperiod).to_frame('breaks').explode('breaks').reset_index(drop=True)
             ],
             axis=1
         )
-        return self.sales
+        return sales
     
 
     def cut_series(self, s: pd.Series, days: int):
@@ -398,7 +414,7 @@ class FeatureExtractor:
         return new_series.rename_categories({i: j for i, j in zip(new_series.categories, labels)})
     
 
-    def extract_days_between_visits(self):
+    def extract_days_between_visits(self, sales):
         '''
         Method to extract the average number of days between visits feature
         '''
@@ -412,50 +428,50 @@ class FeatureExtractor:
         # Visit - unique `receiptdate` entry
         # Therefore, drop duplicates of this column for each user
         if self.subperiod:
-            tmp = self.sales.drop_duplicates(['ciid', 'receiptdate'])\
+            tmp = sales.drop_duplicates(['ciid', 'receiptdate'])\
                     .sort_values(['ciid', 'receiptdate'])\
                         .groupby(['ciid', 'breaks'])\
                             .agg(days_between_visits = pd.NamedAgg('receiptdate', pd.Series.diff))\
                                 .reset_index()
         else:
-            tmp = self.sales.drop_duplicates(['ciid', 'receiptdate'])\
+            tmp = sales.drop_duplicates(['ciid', 'receiptdate'])\
                     .sort_values(['ciid', 'receiptdate'])\
                         .groupby('ciid')\
                             .agg(days_between_visits = pd.NamedAgg('receiptdate', pd.Series.diff))\
                                 .reset_index()
         tmp['average_days_between_visits'] = tmp['days_between_visits'].apply(compute_average)
 
-        self.sales = pd.merge(
-            self.sales,
+        sales = pd.merge(
+            sales,
             tmp[['ciid', 'average_days_between_visits']],
             how='left',
             on='ciid'
         )
-        return self.sales
+        return sales
     
     
-    def extract_peak_hours(self, hours_start: List[str] = ['07:00', '13:00', '17:30'], hours_end: List[str] = ['08:15', '14:00', '19:30']):
+    def extract_peak_hours(self, sales, hours_start: List[str] = ['07:00', '13:00', '17:30'], hours_end: List[str] = ['08:15', '14:00', '19:30']):
         '''
         Method to extract the feature, indicating if the transaction was made during the peak hours or regular hours
         '''
         peak_hours = pd.concat(
             [
-                self.sales.set_index(['receiptdate']).between_time(s, e) for s, e in zip(hours_start, hours_end)
+                sales.set_index(['receiptdate']).between_time(s, e) for s, e in zip(hours_start, hours_end)
             ]
         ).reset_index()['receiptdate'].unique()
-        mask = self.sales['receiptdate'].isin(peak_hours)
+        mask = sales['receiptdate'].isin(peak_hours)
         mask.replace(True, 'peak_hours_qty', inplace=True)
         mask.replace(False, 'usual_hours_qty', inplace=True)
-        self.sales['peak_hour'] = mask
-        return self.sales
+        sales['peak_hour'] = mask
+        return sales
     
 
-    def extract_last_purchase_share(self):
+    def extract_last_purchase_share(self, sales):
         '''
         TODO: add docstring
         '''
         if self.subperiod:
-            tmp = self.sales.groupby(['ciid', 'receiptdate', 'breaks']).agg({'qty': 'sum'}).reset_index()
+            tmp = sales.groupby(['ciid', 'receiptdate', 'breaks']).agg({'qty': 'sum'}).reset_index()
             tmp = pd.merge(
                 tmp.groupby(['ciid', 'breaks']).agg(amount_spent = pd.NamedAgg('qty', 'sum')),
                 tmp.loc[tmp.groupby(['ciid', 'breaks'])['receiptdate'].apply(pd.Series.idxmax).values, :][['ciid', 'qty', 'breaks']],
@@ -463,14 +479,14 @@ class FeatureExtractor:
                 on=['ciid', 'breaks']
             )
             tmp['last_purchase_share'] = tmp['qty']/tmp['amount_spent']
-            self.sales = pd.merge(
-                self.sales,
+            sales = pd.merge(
+                sales,
                 tmp[['ciid', 'last_purchase_share', 'breaks']],
                 on=['ciid', 'breaks'],
                 how='left'
             )
         else:
-            tmp = self.sales.groupby(['ciid', 'receiptdate']).agg({'qty': 'sum'}).reset_index()
+            tmp = sales.groupby(['ciid', 'receiptdate']).agg({'qty': 'sum'}).reset_index()
             tmp = pd.merge(
                 tmp.groupby('ciid').agg(amount_spent = pd.NamedAgg('qty', 'sum')),
                 tmp.loc[tmp.groupby('ciid')['receiptdate'].apply(pd.Series.idxmax).values, :][['ciid', 'qty']],
@@ -478,106 +494,109 @@ class FeatureExtractor:
                 on='ciid'
             )
             tmp['last_purchase_share'] = tmp['qty']/tmp['amount_spent']
-            self.sales = pd.merge(
-                self.sales,
+            sales = pd.merge(
+                sales,
                 tmp[['ciid', 'last_purchase_share']],
                 on='ciid',
                 how='left'
             )
-        return self.sales
+        return sales
 
 
-    def extract_feature_groupby(self, groupcol, aggcol, aggfunc, to_frame_name):
+    def extract_feature_groupby(self, sales: pd.DataFrame, groupcol, aggcol, aggfunc, to_frame_name):
         '''
         TODO: add docstring
         '''
         aggfunc = eval(aggfunc)
         if self.subperiod:
-            tmp = self.sales.groupby([groupcol, 'breaks'])[aggcol].apply(aggfunc).to_frame(to_frame_name).reset_index()
-            self.sales = pd.merge(
-                self.sales,
+            tmp = sales.groupby([groupcol, 'breaks'])[aggcol].apply(aggfunc).to_frame(to_frame_name).reset_index()
+            sales = pd.merge(
+                sales,
                 tmp,
                 how='left',
                 on=[groupcol, 'breaks']
             )
         else:
-            tmp = self.sales.groupby(groupcol)[aggcol].apply(aggfunc).to_frame(to_frame_name).reset_index()
-            self.sales = pd.merge(
-                self.sales,
+            tmp = sales.groupby(groupcol)[aggcol].apply(aggfunc).to_frame(to_frame_name).reset_index()
+            sales = pd.merge(
+                sales,
                 tmp,
                 how='left',
                 on=groupcol
             )
-        return self.sales
+        return sales
 
 
-    def extract_feature_lambda(self, feature_name: str, initial_col: str, lambda_func: Callable):
+    def extract_feature_lambda(self, sales, feature_name: str, initial_col: str, lambda_func: Callable):
         '''
         Method to extract feature from the given dataset using `.apply` => `.lambda` method
         Arguments replicate structure of a `self.lambda_features`
         '''
         lambda_func = eval(lambda_func)
-        self.sales[feature_name] = self.sales[initial_col].apply(lambda_func)
-        return self.sales
+        sales[feature_name] = sales[initial_col].apply(lambda_func)
+        return sales
     
 
-    def extract_fuel_type(self):
+    def extract_fuel_type(self, sales):
         '''
         Method to extract fuel type feature
         Should be executed in main method `transform` after extraction of feature `prodcatbroad` (from `extract_feature_lambda` method)
         '''
-        self.sales['fuel_type'] = np.where(
-            self.sales['prodcatbroad'] == 'fuel_qty',
-            self.sales['proddesc'].str.lower().str.replace(' ', '_') + '_qty', 'other'
+        sales['fuel_type'] = np.where(
+            sales['prodcatbroad'] == 'fuel_qty',
+            sales['proddesc'].str.lower().str.replace(' ', '_') + '_qty', 'other'
         )
-        return self.sales
+        return sales
     
 
-    def extract_recency(self):
+    def extract_recency(self, sales):
         '''
         TODO: add docstring
         '''
         if self.subperiod:
-            tmp = self.sales.groupby(['ciid', 'breaks'])['receiptdate']\
+            tmp = sales.groupby(['ciid', 'breaks'])['receiptdate']\
                 .apply(lambda x: ((x.min()+timedelta(days=self.subperiod))-x.max()).days)\
                     .to_frame('recency').reset_index()
-            self.sales = pd.merge(
-                self.sales,
+            sales = pd.merge(
+                sales,
                 tmp,
                 how='left',
                 on=['ciid', 'breaks']
             )
         else:
-            tmp = self.sales.groupby('ciid')['receiptdate']\
+            tmp = sales.groupby('ciid')['receiptdate']\
                 .apply(lambda x: ((x.min()+timedelta(days=self.period))-x.max()).days)\
                     .to_frame('recency').reset_index()
-            self.sales = pd.merge(
-                self.sales,
+            sales = pd.merge(
+                sales,
                 tmp,
                 how='left',
                 on='ciid'
             )
-        return self.sales
+        return sales
     
 
-    def extract_topic_modelling_features(self):
+    def extract_topic_modelling_features(self, sales):
         '''
         Method to cluster categories of `sales['prodcategoryname']` through pre-trained topic modelling model
         Currently unused, since features turned out to be unrepresentative in terms of variety of relationship between classes of target variable
         '''
-        login(token=self.huggingface_token)
-        topic_model = BERTopic.load(self.huggingface_model_repo)
-        logout()
-        unique_categories = self.sales[~self.sales['prodcategoryname'].isin(['FUELS', 'CAR WASH'])]['prodcategoryname'].unique()
-        topics, probs = topic_model.transform(unique_categories)
-        topic_model_df = topic_model.get_topic_info().set_index('Topic')
-        mapping = {
-            cat: topic_model_df.loc[topic, 'Name'][topic_model_df.loc[topic, 'Name'].find('_')+len('_'):] for cat, topic in zip(unique_categories, topics)
-        }
-        self.sales['prodcatbroad'] = self.sales['prodcategoryname'].apply(
-            lambda x: 'fuel_qty' if x == 'FUELS' else 'car_wash_qty' if x == 'CAR WASH' else f'{mapping[x]}_qty'
-        )
-        return self.sales
+        unique_categories = sales[~sales['prodcategoryname'].isin(['FUELS', 'CAR WASH'])]['prodcategoryname'].unique()
+        if unique_categories.shape[0] > 0:
+            login(token=self.huggingface_token)
+            topic_model = BERTopic.load(self.huggingface_model_repo)
+            logout()
+            topics, probs = topic_model.transform(unique_categories)
+            topic_model_df = topic_model.get_topic_info().set_index('Topic')
+            mapping = {
+                cat: topic_model_df.loc[topic, 'Name'][topic_model_df.loc[topic, 'Name'].find('_')+len('_'):] for cat, topic in zip(unique_categories, topics)
+            }
+            sales['prodcatbroad'] = sales['prodcategoryname'].apply(
+                lambda x: 'fuel_qty' if x == 'FUELS' else 'car_wash_qty' if x == 'CAR WASH' else f'{mapping[x]}_qty'
+            )
+        else:
+            sales['prodcatbroad'] = sales['prodcategoryname']
+        return sales
     
 
     def extract_clustering_feature(self, df_customer_level: pd.DataFrame):
@@ -586,10 +605,10 @@ class FeatureExtractor:
         TODO: add extended docstring
         '''
         # Load clustering model
-        with open('./features/clustering_model.pkl', 'rb') as f:
+        with open('service/app_api/features/clustering_model.pkl', 'rb') as f:
             model = pickle.load(f)
         # Load `scipy.stats.mstats.winsorize` output object to define threshold for the `monetary` variable
-        with open('./features/winsorizing_object_for_threshold.pkl', 'rb') as f:
+        with open('service/app_api/features/winsorizing_object_for_threshold.pkl', 'rb') as f:
             winsor = pickle.load(f)
         X_clust = df_customer_level[['monetary', 'recency', 'average_days_between_visits']]
         monetary_threshold = winsor.max()
@@ -602,14 +621,7 @@ class FeatureExtractor:
             )
         )
         df_customer_level['segments'] = labels
-        df_customer_level['segments'] = df_customer_level['segments'].cat.rename_categories(
-            {
-                0: 'regular_drivers',
-                1: 'passerbys',
-                2: 'frequent_drivers',
-                3: 'at_churn_risk',
-            }
-        )
+        df_customer_level['segments'] = df_customer_level['segments'].cat.rename_categories({2: 'frequent_drivers', 1: 'passerbys', 0: 'regular_drivers'})
         return df_customer_level
     
 
@@ -626,25 +638,6 @@ class FeatureExtractor:
                 **self.train_test_split_params
             )
         return X_train, X_test, y_train, y_test
-
-
-    def merge_dataframes(self):
-        '''
-        Method to merge two dataframes and ensure only customers with at least one transaction are remained
-        as well as appropriate time period is selected for training data
-        Currently unused, since `customers` dataset is not useful for feature generation
-        '''
-        sales_unique_customers = self.sales['ciid'].unique()
-        self.customers = self.customers[
-            self.customers['ciid'].isin(sales_unique_customers)
-        ]
-        df = pd.merge(
-            self.sales,
-            self.customers,
-            on='ciid',
-            how='left'
-        )
-        return df
     
 
     def pivot_table(self, data: pd.DataFrame, values: str, index: str, columns: str, aggfunc: str, prefix: str = None):
