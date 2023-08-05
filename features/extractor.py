@@ -602,7 +602,14 @@ class FeatureExtractor:
             )
         )
         df_customer_level['segments'] = labels
-        df_customer_level['segments'] = df_customer_level['segments'].cat.rename_categories({2: 'frequent_drivers', 1: 'passerbys', 0: 'regular_drivers'})
+        df_customer_level['segments'] = df_customer_level['segments'].cat.rename_categories(
+            {
+                0: 'regular_drivers',
+                1: 'passerbys',
+                2: 'frequent_drivers',
+                3: 'at_churn_risk',
+            }
+        )
         return df_customer_level
     
 
