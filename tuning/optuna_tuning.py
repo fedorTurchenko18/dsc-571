@@ -6,8 +6,9 @@ class OptunaTuner:
     def __init__(
             self,
             model: Literal['sklearn-model-object'],
-            error_metric: Callable,
             direction: Union[Literal['maximize'], Literal['minimize']],
+            error_metric: Callable,
+            error_metric_params: dict = None,
             **fixed_params
     ) -> None:
         """
@@ -17,17 +18,21 @@ class OptunaTuner:
         `model`: Literal['sklearn-model-object']
             Object of `sklearn` ML model or `sklearn.pipeline.Pipeline`
 
-        `error_metric`: Callable
-            Function to measure model performance
-
         `direction`: str
             Either to maximize or minimize performance metric
+        
+        `error_metric`: Callable
+            Function to measure model performance
+        
+        `error_metric_params`: dict
+            Keyword arguments to pass to the error metric (e.g., type of averaging for precision/recall/f1)
         
         `model_params`: kwargs
             Keyword arguments to be passed as default parameters of the specified model
         """
         self.model = model
         self.error_metric = error_metric
+        self.error_metric_params = error_metric_params
         self.direction = direction
         self.fixed_params = fixed_params
         optuna.logging.set_verbosity(0)
@@ -98,9 +103,12 @@ class OptunaTuner:
                 model = self.model
             model.set_params(**{**params, **self.fixed_params})
             model.fit(X_train, y_train)
-
             y_pred = model.predict(X_test)
-            error = self.error_metric(y_test, y_pred)
+
+            if self.error_metric_params == None:
+                error = self.error_metric(y_test, y_pred)
+            else:
+                error = self.error_metric(y_test, y_pred, **self.error_metric_params)
             return error
 
         study = optuna.create_study(direction=self.direction)
