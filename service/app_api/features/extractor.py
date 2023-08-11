@@ -45,6 +45,7 @@ class FeatureExtractor:
             period: Annotated[int, PeriodValueRange(7, float('inf'))] = 30,
             subperiod: Annotated[int, PeriodValueRange(7, float('inf'))] = None,
             target_month: Annotated[int, PeriodValueRange(1, float('inf'))] = 3,
+            n_purchases: Annotated[int, PeriodValueRange(1, float('inf'))] = 3,
             perform_split: bool = True,
             groupby_features = GROUPBY_FEATURES,
             lambda_features = LAMBDA_FEATURES,
@@ -53,7 +54,6 @@ class FeatureExtractor:
             train_test_split_params = TRAIN_TEST_SPLIT_PARAMS,
             huggingface_token = HUGGINGFACE_TOKEN,
             huggingface_model_repo = HUGGINGFACE_MODEL_REPO,
-            return_target: bool = True
         ):
         '''
         `sales` - dataframe with transactional data \n
@@ -106,6 +106,7 @@ class FeatureExtractor:
         self.period = period
         self.subperiod = subperiod
         self.target_month = target_month
+        self.n_purchases = n_purchases
         self.perform_split = perform_split
         self.groupby_features = groupby_features
         self.lambda_features = lambda_features
@@ -114,7 +115,6 @@ class FeatureExtractor:
         self.train_test_split_params = train_test_split_params
         self.huggingface_token = huggingface_token
         self.huggingface_model_repo = huggingface_model_repo
-        self.return_target = return_target
 
     
     def transform(self, sales, customers):
@@ -130,7 +130,7 @@ class FeatureExtractor:
         # Extract target first, since then the data will only be limited to a first month of activity for each user
         # but target refers to the activity during `target_month` month
         customer_level_features = copy.deepcopy(self.customer_level_features[self.generation_type])
-        if self.return_target:
+        if self.target_month:
             sales = self.extract_target(sales)
         else:
             for d in customer_level_features:
@@ -268,7 +268,7 @@ class FeatureExtractor:
             )
             return X_train, X_test, y_train, y_test
         else:
-            if self.return_target:
+            if self.target_month:
                 y = df_customer_level['target']
                 return X, y
             else:
@@ -321,7 +321,9 @@ class FeatureExtractor:
             return np.int32(s.split('-')[1])/30
         
         sales['months_enum'] = sales['months_enum'].apply(months_from_breaks)
-        mask = sales['ciid'].isin(sales[sales['months_enum']==self.target_month]['ciid'].unique())
+        tmp = sales[sales['months_enum'] == 3].groupby('ciid', as_index=False).agg(purchases_count = pd.NamedAgg('receiptid', 'count'))
+        tmp = tmp[tmp['purchases_count'] >= self.n_purchases]
+        mask = sales['ciid'].isin(tmp['ciid'].unique())
         mask.replace(True, 1, inplace=True)
         mask.replace(False, 0, inplace=True)
         sales['target'] = mask
