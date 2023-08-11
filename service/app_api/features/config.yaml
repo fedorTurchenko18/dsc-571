@@ -1,5 +1,5 @@
 # Primary keys represent the names of `FeatureExtractor` class constructor arguments
-# This config contains default values of these corresponding arguments
+# This config below contains default values of these corresponding arguments
 
 lambda_features:
 
@@ -24,6 +24,11 @@ groupby_features:
     'aggcol': 'qty'
     'aggfunc': 'np.sum'
     'to_frame_name': 'monetary'
+
+  - 'groupcol': 'ciid'
+    'aggcol': 'receiptdate'
+    'aggfunc': "lambda x: pd.Series.nunique(x.astype('datetime64[D]'))"
+    'to_frame_name': 'days_of_inactivity'
 
 
 # Every new feature is added to the final dataframe through "pivoting", i.e. aggregating on customer level
@@ -79,6 +84,11 @@ customer_level_features:
       'values': 'full_non_fuel_purchase'
       'index': 'ciid'
       'aggfunc': "lambda x: 1 if 1 in x.values else 0"
+
+    - 'columns': null
+      'values': 'days_of_inactivity'
+      'index': 'ciid'
+      'aggfunc': 'mean'
 
   continuous:
     - 'columns': 'prodcatbroad'
@@ -147,6 +157,7 @@ current_features:
     - 'last_purchase_share'
     - 'full_non_fuel_purchase'
     - 'segments'
+    - 'days_of_inactivity'
 
   continuous:
     - 'fuel_qty'

@@ -5,7 +5,7 @@ import yaml
 import pickle
 import copy
 
-from configs import settings
+from service.app_api.configs import settings
 from datetime import datetime, timedelta
 from typing import Annotated, Callable, Union, List, Literal
 from dataclasses import dataclass
@@ -157,6 +157,12 @@ class FeatureExtractor:
                 sales,
                 **feature
             )
+        # This feature is generally extracted through "groupby" methodology
+        # However, needs additional oneline tweak to be extracted
+        if self.subperiod:
+            sales['days_of_inactivity'] = sales['days_of_inactivity'].apply(lambda x: self.subperiod-x)
+        else:
+            sales['days_of_inactivity'] = sales['days_of_inactivity'].apply(lambda x: self.period-x)
 
         # Extract "lambda" features
         for feature in self.lambda_features:

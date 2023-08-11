@@ -4,7 +4,7 @@ from typing import Union
 from pathlib import Path
 from dotenv import load_dotenv
 
-def load_env_vars(root_dir: Union[str, Path] = './configs') -> dict:
+def load_env_vars(root_dir: Union[str, Path] = './service/app_api/configs') -> dict:
     '''
     Load environment variables from .env.default and .env files
     

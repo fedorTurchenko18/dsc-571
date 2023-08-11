@@ -1,4 +1,4 @@
 # Make sure shell is trusted
 set -a
-source ./configs/.env
+source ./service/app_api/configs/.env
 set +a

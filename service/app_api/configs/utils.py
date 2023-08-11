@@ -2,7 +2,7 @@ import wandb
 import subprocess
 import re
 
-from configs import settings
+from service.app_api.configs import settings
 from datetime import datetime
 from typing import Literal, Union
 
@@ -61,6 +61,7 @@ def init_wandb_run(
     resume: str = None,
     reinit: bool = False,
     entity: str = settings.SETTINGS['WANDB_ENTITY'],
+    **kwargs
 ):
     '''
     Wrapper around the wandb.init function. Re-implemented to provide handy type hints and implement slightly extended functionality
@@ -100,7 +101,8 @@ def init_wandb_run(
         job_type=job_type,
         id=run_id,
         reinit=reinit,
-        resume=resume
+        resume=resume,
+        **kwargs
     )
     return run
 
