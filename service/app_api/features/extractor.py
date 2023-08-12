@@ -249,6 +249,8 @@ class FeatureExtractor:
                 for comp_col in self.current_features[self.generation_type]:
                     if comp_col in col:
                         final_cols.append(col)
+            # Compute intraperiod difference for feature, broken down by subperiod
+            df_customer_level = self.extract_intraperiod_difference(df_customer_level)
             X = df_customer_level[final_cols]
         except KeyError:
             warnings.warn('Certain columns, specified in `current_features` list of class constructor, do not exist. Full dataframe will be returned')
@@ -669,3 +671,28 @@ class FeatureExtractor:
         if prefix:
             pivot.columns = [f'{prefix}_{col}' for col in pivot.columns]
         return pivot
+
+
+    def extract_intraperiod_difference(self, df_customer_level):
+        '''
+        TODO: add docstring
+        '''
+        cols_with_breaks = []
+        for col in df_customer_level.columns:
+            # Dash exists only in subperiods naming
+            if '-' in col and col[:col.rindex('_')] not in cols_with_breaks:
+                # Extract only general column name (without subperiod)
+                cols_with_breaks.append(col[:col.rindex('_')])
+        # gen_col - general column name (without subperiod)
+        for gen_col in cols_with_breaks:
+            df_customer_level_diff = df_customer_level.loc[
+                :, [col for col in df_customer_level.columns if gen_col in col]
+            ] \
+                .diff(axis=1) # compute difference
+            df_customer_level_diff = df_customer_level_diff.iloc[:, 1:] # first subperiod column will always be full NaN
+            df_customer_level_diff = df_customer_level_diff.rename({col: f'{col}_previous_period_diff' for col in df_customer_level_diff.columns}, axis=1)
+            df_customer_level = pd.concat(
+                [df_customer_level, df_customer_level_diff],
+                axis=1
+            )
+        return df_customer_level
