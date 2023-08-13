@@ -250,15 +250,15 @@ class FeatureExtractor:
                     if comp_col in col:
                         final_cols.append(col)
             # Compute intraperiod difference for feature, broken down by subperiod
-            df_customer_level = self.extract_intraperiod_difference(df_customer_level)
             X = df_customer_level[final_cols]
+            X = self.extract_intraperiod_difference(X)
         except KeyError:
             warnings.warn('Certain columns, specified in `current_features` list of class constructor, do not exist. Full dataframe will be returned')
             X = df_customer_level
 
         if self.generation_type == 'categorical':
-            # Change type of last_purchase_share to set it aside from breakdown columns
-            last_purchase_share_cols = [col for col in X.columns if 'last_purchase_share' in col]
+            # Change type of last_purchase_qty_share to set it aside from breakdown columns
+            last_purchase_share_cols = [col for col in X.columns if 'last_purchase_qty_share' in col]
             X[last_purchase_share_cols] = X[last_purchase_share_cols].astype('float32')
             # Convert breakdown columns to integer
             float_cols = X.select_dtypes(include=['float64']).columns
@@ -488,10 +488,10 @@ class FeatureExtractor:
                 how='left',
                 on=['ciid', 'breaks']
             )
-            tmp['last_purchase_share'] = tmp['qty']/tmp['amount_spent']
+            tmp['last_purchase_qty_share'] = tmp['qty']/tmp['amount_spent']
             sales = pd.merge(
                 sales,
-                tmp[['ciid', 'last_purchase_share', 'breaks']],
+                tmp[['ciid', 'last_purchase_qty_share', 'breaks']],
                 on=['ciid', 'breaks'],
                 how='left'
             )
@@ -503,10 +503,10 @@ class FeatureExtractor:
                 how='left',
                 on='ciid'
             )
-            tmp['last_purchase_share'] = tmp['qty']/tmp['amount_spent']
+            tmp['last_purchase_qty_share'] = tmp['qty']/tmp['amount_spent']
             sales = pd.merge(
                 sales,
-                tmp[['ciid', 'last_purchase_share']],
+                tmp[['ciid', 'last_purchase_qty_share']],
                 on='ciid',
                 how='left'
             )
@@ -680,19 +680,24 @@ class FeatureExtractor:
         cols_with_breaks = []
         for col in df_customer_level.columns:
             # Dash exists only in subperiods naming
-            if '-' in col and col[:col.rindex('_')] not in cols_with_breaks:
+            if '-' in col \
+                and col[:col.rindex('_')] not in cols_with_breaks \
+                    and 'qty' in col:
                 # Extract only general column name (without subperiod)
                 cols_with_breaks.append(col[:col.rindex('_')])
         # gen_col - general column name (without subperiod)
+        print(cols_with_breaks)
         for gen_col in cols_with_breaks:
             df_customer_level_diff = df_customer_level.loc[
-                :, [col for col in df_customer_level.columns if gen_col in col]
-            ] \
-                .diff(axis=1) # compute difference
-            df_customer_level_diff = df_customer_level_diff.iloc[:, 1:] # first subperiod column will always be full NaN
-            df_customer_level_diff = df_customer_level_diff.rename({col: f'{col}_previous_period_diff' for col in df_customer_level_diff.columns}, axis=1)
-            df_customer_level = pd.concat(
-                [df_customer_level, df_customer_level_diff],
-                axis=1
-            )
+                :, # all rows
+                [col for col in df_customer_level.columns if gen_col in col]
+            ]
+            if df_customer_level_diff.iloc[:, 0].nunique() > 2:
+                df_customer_level_diff = df_customer_level_diff.diff(axis=1) # compute difference
+                df_customer_level_diff = df_customer_level_diff.iloc[:, 1:] # first subperiod column will always be full NaN
+                df_customer_level_diff = df_customer_level_diff.rename({col: f'{col}_previous_period_diff' for col in df_customer_level_diff.columns}, axis=1)
+                df_customer_level = pd.concat(
+                    [df_customer_level, df_customer_level_diff],
+                    axis=1
+                )
         return df_customer_level

@@ -76,7 +76,7 @@ customer_level_features:
       'aggfunc': 'mean'
 
     - 'columns': null
-      'values': 'last_purchase_share'
+      'values': 'last_purchase_qty_share'
       'index': 'ciid'
       'aggfunc': 'mean'
 
@@ -132,7 +132,7 @@ customer_level_features:
       'aggfunc': 'mean'
 
     - 'columns': null
-      'values': 'last_purchase_share'
+      'values': 'last_purchase_qty_share'
       'index': 'ciid'
       'aggfunc': 'mean'
 
@@ -154,7 +154,7 @@ current_features:
     - 'peak_hour'
     - 'weekday'
     - 'fuel_type'
-    - 'last_purchase_share'
+    - 'last_purchase_qty_share'
     - 'full_non_fuel_purchase'
     - 'segments'
     - 'days_of_inactivity'
@@ -167,7 +167,7 @@ current_features:
     - 'weekday_qty'
     - 'weekend_qty'
     - 'labour_cards_catalogue_consumables'
-    - 'last_purchase_share'
+    - 'last_purchase_qty_share'
     - 'full_non_fuel_purchase'
 
 
