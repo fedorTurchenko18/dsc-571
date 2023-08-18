@@ -126,10 +126,21 @@ class FeatureExtractor:
         '''
         # Remove data before June 2021
         sales = self.filter_sales(sales, customers)
+        if sales.shape[0] == 0:
+            # Filtering removed all rows
+            # Could be the case, e.g., if sales dataset is being cut to a single customer
+            # with outdated records
+            if self.perform_split:
+                X_train, X_test, y_train, y_test = None, None, None, None
+                return X_train, X_test, y_train, y_test
+            else:
+                X, y = None, None
+                return X, y
 
         # Extract target first, since then the data will only be limited to a first month of activity for each user
         # but target refers to the activity during `target_month` month
         customer_level_features = copy.deepcopy(self.customer_level_features[self.generation_type])
+        current_features = copy.deepcopy(self.current_features[self.generation_type])
         if self.target_month:
             sales = self.extract_target(sales)
         else:
@@ -235,7 +246,7 @@ class FeatureExtractor:
             df_customer_level = self.extract_clustering_feature(df_customer_level)
         else:
             # Add RFM features to the output feature list instead of segments for continuous features
-            self.current_features[self.generation_type].extend(['monetary', 'recency', 'average_days_between_visits'])
+            current_features.extend(['monetary', 'recency', 'average_days_between_visits'])
         df_customer_level = pd.concat(
             [
                 df_customer_level.select_dtypes(exclude='category').fillna(0),
@@ -246,7 +257,7 @@ class FeatureExtractor:
         try:
             final_cols = []
             for col in df_customer_level.columns:
-                for comp_col in self.current_features[self.generation_type]:
+                for comp_col in current_features:
                     if comp_col in col:
                         final_cols.append(col)
             # Compute intraperiod difference for feature, broken down by subperiod
@@ -289,6 +300,7 @@ class FeatureExtractor:
         Data before June 2021 is irrelevant due to Covid restrictions, etc.
         '''
         sales['receiptdate'] = pd.to_datetime(sales['receiptdate'])
+        customers['accreccreateddate'] = pd.to_datetime(customers['accreccreateddate'])
         
         # if clause is needed to ensure the transformation is performed only on train set
         if sales['receiptdate'].min() < datetime(2021, 6, 1, 0, 0, 0):
@@ -316,7 +328,6 @@ class FeatureExtractor:
             `1 | 0`
         '''
         sales = sales.sort_values(['ciid', 'receiptdate'])
-
         sales = pd.concat(
             [
                 sales.reset_index(drop=True),
@@ -324,7 +335,6 @@ class FeatureExtractor:
             ],
             axis=1
         )
-
         def months_from_breaks(s):
             return np.int32(s.split('-')[1])/30
         
@@ -375,7 +385,7 @@ class FeatureExtractor:
         Returns: pandas.Series
             breaks, representing subperiods
         '''
-        s = s.astype('datetime64[D]')
+        s = pd.Series(s.values.astype('datetime64[D]'))
         min_date = s.min()
         max_date = s.max()
         # Compute total number of periods - number of weeks which fit in the date range for a user
@@ -686,7 +696,6 @@ class FeatureExtractor:
                 # Extract only general column name (without subperiod)
                 cols_with_breaks.append(col[:col.rindex('_')])
         # gen_col - general column name (without subperiod)
-        print(cols_with_breaks)
         for gen_col in cols_with_breaks:
             df_customer_level_diff = df_customer_level.loc[
                 :, # all rows
