@@ -1,7 +1,9 @@
-import streamsync as ss, pandas as pd, requests
+import streamsync as ss, pandas as pd, requests, numpy as np, shap
 
+from bs4 import BeautifulSoup as bs
+from loguru import logger
+from dash import html
 from datetime import datetime
-
 from io import BytesIO
 
 
@@ -14,8 +16,9 @@ def parse_file_input(state):
         users = customers['ciid'].to_list()
 
         state['ciid'] = dict(zip(users, users))
-        state['sales'] = sales.to_json(orient='records', date_format='iso')
-        state['customers'] = customers.to_json(orient='records', date_format='iso')
+        state['sales'] = sales
+        state['customers'] = customers
+
         state['file_upload_message']['text'] = '+Data successfully processed! Choose the user for prediction'
     except:
         state['users_xlsx'] = None
@@ -26,17 +29,51 @@ def selected_user(state, payload):
     state['selected_ciid'] = payload
 
 def predict(state):
-    r = requests.post(
+    sales_cut = pd.DataFrame(state['sales'])
+    sales_cut = sales_cut[sales_cut['ciid']==state['selected_ciid']]
+    sales_cut.drop('ciid', axis=1, inplace=True)
+    sales_cut['receiptdate'] = sales_cut['receiptdate'].astype(str)
+    sales_cut = sales_cut.to_dict(orient='list')
+
+    customers_cut = pd.DataFrame(state['customers'])
+    customers_cut = customers_cut[customers_cut['ciid']==state['selected_ciid']]
+    customers_cut.drop('ciid', axis=1, inplace=True)
+    customers_cut.dropna(axis=1, inplace=True)
+    customers_cut['accreccreateddate'] = customers_cut['accreccreateddate'].astype(str)
+    customers_cut = customers_cut.to_dict(orient='list')
+    request = requests.post(
         'http://0.0.0.0:8000/predict',
         json={
             'user': {'ciid': state['selected_ciid']},
-            'sales': {'sales': state['sales']},
-            'customers': {'customers': state['customers']}
+            'sales': sales_cut,
+            'customers': customers_cut,
+            'request_fields': {'fields': ['prediction', 'confidence', 'shapley_values']}
         }
     )
-    state['prediction'] = r.json()['prediction']
+    response = request.json()
+
+    state['prediction'] = response['prediction']
     state['results']['visible'] = True
     state['results']['prediction_text'] = f"Predicted value is: {state['prediction']}"
+
+    shapley_values = np.array(response['shapley_values']['shapley_values'])
+    X = pd.DataFrame(response['shapley_values']['X'])
+    y = pd.DataFrame(response['shapley_values']['y'])
+    ev = response['shapley_values']['shapley_expected_value']
+
+    force_plot = shap.force_plot(ev, shapley_values, X, link='logit').html()
+    force_plot_func = bs(force_plot).select_one('script').get_text()
+    # with open('app_ui/static/force_plot.js', 'w') as f:
+    #     f.write(force_plot_func)
+
+    state.import_frontend_module('general_shap', 'app_ui/static/general_shap.js')
+    a = state.call_frontend_function('general_shap')
+    print(a)
+    state.import_frontend_module('force_plot', 'app_ui/static/force_plot.js')
+    b = state.call_frontend_function('force_plot')
+    print(b)
+
+
 
 initial_state = ss.init_state({
     "my_app": {
@@ -53,8 +90,9 @@ initial_state = ss.init_state({
     },
     'prediction': None,
     'results': {
-        'visible': False,
-        'prediction_text': ''
+        'visible': True,
+        'prediction_text': '',
+        'force_plot': None
     }
 })
 
