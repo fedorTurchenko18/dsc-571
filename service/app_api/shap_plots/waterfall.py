@@ -1,9 +1,9 @@
-import matplotlib
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 import numpy as np
+import pandas as pd
 
-from typing import Literal, Optional
-from scipy.special import expit
+from typing import Literal
 
 from service.app_api.configs.utils import format_value, safe_isinstance
 from service.app_api.shap_plots.utils import colors
@@ -15,7 +15,14 @@ from service.app_api.shap_plots.utils.logit_transformation import shap_transform
 # plot that is associated with that feature get overlaid on the plot...it would quickly allow users to answer
 # why a feature is pushing down or up. Perhaps the best way to do this would be with an ICE plot hanging off
 # of the bar...
-def waterfall(shap_values, max_display=10, show=True, link: Literal['identity', 'logit'] = 'logit', predicted_probability: Optional[float] = None):
+def waterfall(
+        shap_values,
+        predicted_probability: float,
+        max_display=10,
+        show=True,
+        link: Literal['identity', 'logit'] = 'logit',
+        global_renderer: Literal['matplotlib', 'plotly'] = 'plotly'
+):
     """Plots an explanation of a single prediction as a waterfall plot.
 
     The SHAP value of a feature represents the impact of the evidence provided by that feature on the model's
@@ -177,143 +184,242 @@ def waterfall(shap_values, max_display=10, show=True, link: Literal['identity', 
     hl_scaled = bbox_to_xscale * head_length
     renderer = fig.canvas.get_renderer()
 
-    # draw the positive arrows
-    for i in range(len(pos_inds)):
-        dist = pos_widths[i]
-        arrow_obj = plt.arrow(
-            pos_lefts[i], pos_inds[i], max(dist-hl_scaled, 0.000001), 0,
-            head_length=min(dist, hl_scaled),
-            color=colors.red_rgb, width=bar_width,
-            head_width=bar_width,
-        )
-
-        if pos_low is not None and i < len(pos_low):
-            plt.errorbar(
-                pos_lefts[i] + pos_widths[i], pos_inds[i],
-                xerr=np.array([[pos_widths[i] - pos_low[i]], [pos_high[i] - pos_widths[i]]]),
-                ecolor=colors.light_red_rgb,
+    if global_renderer == 'matplotlib':
+        # draw the positive arrows
+        for i in range(len(pos_inds)):
+            dist = pos_widths[i]
+            arrow_obj = plt.arrow(
+                pos_lefts[i], pos_inds[i], max(dist-hl_scaled, 0.000001), 0,
+                head_length=min(dist, hl_scaled),
+                color=colors.red_rgb, width=bar_width,
+                head_width=bar_width,
             )
 
-        txt_obj = plt.text(
-            pos_lefts[i] + 0.5*dist, pos_inds[i], format_value(pos_widths[i], '%+0.02f'),
-            horizontalalignment='center', verticalalignment='center', color="white",
-            fontsize=12,
-        )
-        text_bbox = txt_obj.get_window_extent(renderer=renderer)
-        arrow_bbox = arrow_obj.get_window_extent(renderer=renderer)
-
-        # if the text overflows the arrow then draw it after the arrow
-        if text_bbox.width > arrow_bbox.width:
-            txt_obj.remove()
+            if pos_low is not None and i < len(pos_low):
+                plt.errorbar(
+                    pos_lefts[i] + pos_widths[i], pos_inds[i],
+                    xerr=np.array([[pos_widths[i] - pos_low[i]], [pos_high[i] - pos_widths[i]]]),
+                    ecolor=colors.light_red_rgb,
+                )
 
             txt_obj = plt.text(
-                pos_lefts[i] + (5/72)*bbox_to_xscale + dist, pos_inds[i], format_value(pos_widths[i], '%+0.02f'),
-                horizontalalignment='left', verticalalignment='center', color=colors.red_rgb,
+                pos_lefts[i] + 0.5*dist, pos_inds[i], format_value(pos_widths[i], '%+0.02f'),
+                horizontalalignment='center', verticalalignment='center', color="white",
                 fontsize=12,
             )
+            text_bbox = txt_obj.get_window_extent(renderer=renderer)
+            arrow_bbox = arrow_obj.get_window_extent(renderer=renderer)
 
-    # draw the negative arrows
-    for i in range(len(neg_inds)):
-        dist = neg_widths[i]
+            # if the text overflows the arrow then draw it after the arrow
+            if text_bbox.width > arrow_bbox.width:
+                txt_obj.remove()
 
-        arrow_obj = plt.arrow(
-            neg_lefts[i], neg_inds[i], -max(-dist-hl_scaled, 0.000001), 0,
-            head_length=min(-dist, hl_scaled),
-            color=colors.blue_rgb, width=bar_width,
-            head_width=bar_width,
-        )
+                txt_obj = plt.text(
+                    pos_lefts[i] + (5/72)*bbox_to_xscale + dist, pos_inds[i], format_value(pos_widths[i], '%+0.02f'),
+                    horizontalalignment='left', verticalalignment='center', color=colors.red_rgb,
+                    fontsize=12,
+                )
 
-        if neg_low is not None and i < len(neg_low):
-            plt.errorbar(
-                neg_lefts[i] + neg_widths[i], neg_inds[i],
-                xerr=np.array([[neg_widths[i] - neg_low[i]], [neg_high[i] - neg_widths[i]]]),
-                ecolor=colors.light_blue_rgb,
+        # draw the negative arrows
+        for i in range(len(neg_inds)):
+            dist = neg_widths[i]
+
+            arrow_obj = plt.arrow(
+                neg_lefts[i], neg_inds[i], -max(-dist-hl_scaled, 0.000001), 0,
+                head_length=min(-dist, hl_scaled),
+                color=colors.blue_rgb, width=bar_width,
+                head_width=bar_width,
             )
 
-        txt_obj = plt.text(
-            neg_lefts[i] + 0.5*dist, neg_inds[i], format_value(neg_widths[i], '%+0.02f'),
-            horizontalalignment='center', verticalalignment='center', color="white",
-            fontsize=12,
-        )
-        text_bbox = txt_obj.get_window_extent(renderer=renderer)
-        arrow_bbox = arrow_obj.get_window_extent(renderer=renderer)
-
-        # if the text overflows the arrow then draw it after the arrow
-        if text_bbox.width > arrow_bbox.width:
-            txt_obj.remove()
+            if neg_low is not None and i < len(neg_low):
+                plt.errorbar(
+                    neg_lefts[i] + neg_widths[i], neg_inds[i],
+                    xerr=np.array([[neg_widths[i] - neg_low[i]], [neg_high[i] - neg_widths[i]]]),
+                    ecolor=colors.light_blue_rgb,
+                )
 
             txt_obj = plt.text(
-                neg_lefts[i] - (5/72)*bbox_to_xscale + dist, neg_inds[i], format_value(neg_widths[i], '%+0.02f'),
-                horizontalalignment='right', verticalalignment='center', color=colors.blue_rgb,
+                neg_lefts[i] + 0.5*dist, neg_inds[i], format_value(neg_widths[i], '%+0.02f'),
+                horizontalalignment='center', verticalalignment='center', color="white",
                 fontsize=12,
             )
+            text_bbox = txt_obj.get_window_extent(renderer=renderer)
+            arrow_bbox = arrow_obj.get_window_extent(renderer=renderer)
 
-    # draw the y-ticks twice, once in gray and then again with just the feature names in black
-    # The 1e-8 is so matplotlib 3.3 doesn't try and collapse the ticks
-    ytick_pos = list(range(num_features)) + list(np.arange(num_features)+1e-8)
-    plt.yticks(ytick_pos, yticklabels[:-1] + [l.split('=')[-1] for l in yticklabels[:-1]], fontsize=13)
+            # if the text overflows the arrow then draw it after the arrow
+            if text_bbox.width > arrow_bbox.width:
+                txt_obj.remove()
 
-    # put horizontal lines for each feature row
-    # for i in range(num_features):
-    #     plt.axhline(i, color="#cccccc", lw=0.5, dashes=(1, 5), zorder=-1)
+                txt_obj = plt.text(
+                    neg_lefts[i] - (5/72)*bbox_to_xscale + dist, neg_inds[i], format_value(neg_widths[i], '%+0.02f'),
+                    horizontalalignment='right', verticalalignment='center', color=colors.blue_rgb,
+                    fontsize=12,
+                )
 
-    # mark the prior expected value and the model prediction
-    # plt.axvline(base_values, 0, 1/num_features, color="#bbbbbb", linestyle="--", linewidth=0.5, zorder=-1)
-    fx = base_values + values.sum()
-    given_prediction_line = plt.axvline(fx, 0, 1, color=colors.light_red_rgb, linestyle="--", linewidth=0.7, zorder=-1)
-    plt.legend(labels=['Given Prediction Confidence'], handles=[given_prediction_line])
+        # draw the y-ticks twice, once in gray and then again with just the feature names in black
+        # The 1e-8 is so matplotlib 3.3 doesn't try and collapse the ticks
+        ytick_pos = list(range(num_features)) + list(np.arange(num_features)+1e-8)
+        plt.yticks(ytick_pos, yticklabels[:-1] + [l.split('=')[-1] for l in yticklabels[:-1]], fontsize=13)
 
-    # clean up the main axis
-    plt.gca().xaxis.set_ticks_position('bottom')
-    plt.gca().yaxis.set_ticks_position('none')
-    plt.gca().spines['right'].set_visible(False)
-    plt.gca().spines['top'].set_visible(False)
-    plt.gca().spines['left'].set_visible(False)
-    ax.tick_params(labelsize=13)
-    #plt.xlabel("\nModel output", fontsize=12)
+        # put horizontal lines for each feature row
+        # for i in range(num_features):
+        #     plt.axhline(i, color="#cccccc", lw=0.5, dashes=(1, 5), zorder=-1)
 
-    # draw the E[f(X)] tick mark
-    # xmin, xmax = ax.get_xlim()
-    # ax2 = ax.twiny()
-    # ax2.set_xlim(xmin, xmax)
-    # ax2.set_xticks([base_values, base_values+1e-8])  # The 1e-8 is so matplotlib 3.3 doesn't try and collapse the ticks
-    # ax2.set_xticklabels(["\n$E[f(X)]$", "\n$ = "+format_value(base_values, "%0.03f")+"$"], fontsize=12, ha="left")
-    # ax2.spines['right'].set_visible(False)
-    # ax2.spines['top'].set_visible(False)
-    # ax2.spines['left'].set_visible(False)
+        # mark the prior expected value and the model prediction
+        # plt.axvline(base_values, 0, 1/num_features, color="#bbbbbb", linestyle="--", linewidth=0.5, zorder=-1)
+        fx = base_values + values.sum()
+        given_prediction_line = plt.axvline(fx, 0, 1, color=colors.light_red_rgb, linestyle="--", linewidth=0.7, zorder=-1)
+        plt.legend(labels=['Given Prediction Confidence'], handles=[given_prediction_line])
 
-    # # draw the f(x) tick mark
-    # ax3 = ax2.twiny()
-    # ax3.set_xlim(xmin, xmax)
-    # # The 1e-8 is so matplotlib 3.3 doesn't try and collapse the ticks
-    # ax3.set_xticks([base_values + values.sum(), base_values + values.sum() + 1e-8])
-    # # ax3.set_xticklabels(["$f(x)$", "$ = "+format_value(fx, "%0.03f")+"$"], fontsize=12, ha="left")
-    # tick_labels = ax3.xaxis.get_majorticklabels()
-    # tick_labels[0].set_transform(tick_labels[0].get_transform(
-    # ) + matplotlib.transforms.ScaledTranslation(-10/72., 0, fig.dpi_scale_trans))
-    # tick_labels[1].set_transform(tick_labels[1].get_transform(
-    # ) + matplotlib.transforms.ScaledTranslation(12/72., 0, fig.dpi_scale_trans))
-    # tick_labels[1].set_color("#999999")
-    # ax3.spines['right'].set_visible(False)
-    # ax3.spines['top'].set_visible(False)
-    # ax3.spines['left'].set_visible(False)
+        # clean up the main axis
+        plt.gca().xaxis.set_ticks_position('bottom')
+        plt.gca().yaxis.set_ticks_position('none')
+        plt.gca().spines['right'].set_visible(False)
+        plt.gca().spines['top'].set_visible(False)
+        plt.gca().spines['left'].set_visible(False)
+        ax.tick_params(labelsize=13)
+        #plt.xlabel("\nModel output", fontsize=12)
 
-    # adjust the position of the E[f(X)] = x.xx label
-    # tick_labels = ax2.xaxis.get_majorticklabels()
-    # tick_labels[0].set_transform(tick_labels[0].get_transform(
-    # ) + matplotlib.transforms.ScaledTranslation(-20/72., 0, fig.dpi_scale_trans))
-    # tick_labels[1].set_transform(tick_labels[1].get_transform(
-    # ) + matplotlib.transforms.ScaledTranslation(22/72., -1/72., fig.dpi_scale_trans))
+        # draw the E[f(X)] tick mark
+        # xmin, xmax = ax.get_xlim()
+        # ax2 = ax.twiny()
+        # ax2.set_xlim(xmin, xmax)
+        # ax2.set_xticks([base_values, base_values+1e-8])  # The 1e-8 is so matplotlib 3.3 doesn't try and collapse the ticks
+        # ax2.set_xticklabels(["\n$E[f(X)]$", "\n$ = "+format_value(base_values, "%0.03f")+"$"], fontsize=12, ha="left")
+        # ax2.spines['right'].set_visible(False)
+        # ax2.spines['top'].set_visible(False)
+        # ax2.spines['left'].set_visible(False)
 
-    # tick_labels[1].set_color("#999999")
+        # # draw the f(x) tick mark
+        # ax3 = ax2.twiny()
+        # ax3.set_xlim(xmin, xmax)
+        # # The 1e-8 is so matplotlib 3.3 doesn't try and collapse the ticks
+        # ax3.set_xticks([base_values + values.sum(), base_values + values.sum() + 1e-8])
+        # # ax3.set_xticklabels(["$f(x)$", "$ = "+format_value(fx, "%0.03f")+"$"], fontsize=12, ha="left")
+        # tick_labels = ax3.xaxis.get_majorticklabels()
+        # tick_labels[0].set_transform(tick_labels[0].get_transform(
+        # ) + matplotlib.transforms.ScaledTranslation(-10/72., 0, fig.dpi_scale_trans))
+        # tick_labels[1].set_transform(tick_labels[1].get_transform(
+        # ) + matplotlib.transforms.ScaledTranslation(12/72., 0, fig.dpi_scale_trans))
+        # tick_labels[1].set_color("#999999")
+        # ax3.spines['right'].set_visible(False)
+        # ax3.spines['top'].set_visible(False)
+        # ax3.spines['left'].set_visible(False)
 
-    # color the y tick labels that have the feature values as gray
-    # (these fall behind the black ones with just the feature name)
-    tick_labels = ax.yaxis.get_majorticklabels()
-    for i in range(num_features):
-        tick_labels[i].set_color("#999999")
+        # adjust the position of the E[f(X)] = x.xx label
+        # tick_labels = ax2.xaxis.get_majorticklabels()
+        # tick_labels[0].set_transform(tick_labels[0].get_transform(
+        # ) + matplotlib.transforms.ScaledTranslation(-20/72., 0, fig.dpi_scale_trans))
+        # tick_labels[1].set_transform(tick_labels[1].get_transform(
+        # ) + matplotlib.transforms.ScaledTranslation(22/72., -1/72., fig.dpi_scale_trans))
+
+        # tick_labels[1].set_color("#999999")
+
+        # color the y tick labels that have the feature values as gray
+        # (these fall behind the black ones with just the feature name)
+        tick_labels = ax.yaxis.get_majorticklabels()
+        for i in range(num_features):
+            tick_labels[i].set_color("#999999")
+
+    elif global_renderer == 'plotly':
+        df_pos = pd.DataFrame()
+        df_pos['widths'] = pos_widths
+        df_pos['inds'] = pos_inds
+        df_pos['dir'] = 'pos'
+
+        df_neg = pd.DataFrame()
+        df_neg['widths'] = neg_widths
+        df_neg['inds'] = neg_inds
+        df_neg['dir'] = 'neg'
+
+        df = pd.concat([df_pos, df_neg], axis=0)
+        df['widths'] = df.apply(lambda x: -x['widths'] if x['inds']=='neg' else x['widths'], axis=1)
+        df['inds'] = df['inds']+1
+        df = pd.concat([df, pd.DataFrame({'widths': [0.3310746], 'inds': [0], 'dir': ['pos']})], axis=0)
+        df.sort_values('inds', ascending=True, inplace=True)
+        yticklabels.pop(-1)
+        yticklabels.insert(0, '')
+        df['ylabels'] = yticklabels
+        df['widths'] = np.round(df['widths'], 2)
+
+        red_rgb = f'rgb({colors.red_rgb[0]}, {colors.red_rgb[1]}, {colors.red_rgb[2]})'
+        blue_rgb = f'rgb({colors.blue_rgb[0]}, {colors.blue_rgb[1]}, {colors.blue_rgb[2]})'
+        plotly_fig = go.Figure()
+        plotly_fig.add_trace(
+            go.Waterfall(
+                orientation='h',
+                name='Features Contribution',
+                measure=['absolute']+['relative' for _ in range(df.shape[0]-1)],
+                y=df['ylabels'],
+                x=df['widths'],
+                connector = {
+                    'mode': 'between',
+                    'line': {
+                        'width': 4,
+                        'color': 'rgb(0, 0, 0)',
+                        'dash': 'solid'
+                    }
+                },
+                totals = {
+                    'marker': {
+                        'color': 'rgba(0, 0, 0, 0)'
+                    }
+                },
+                decreasing={
+                    'marker': {
+                        'color': blue_rgb,
+                        'line': {
+                            'color': blue_rgb
+                        }
+                    }
+                },
+                increasing={
+                    'marker': {
+                        'color': red_rgb,
+                        'line': {
+                            'color': red_rgb
+                        }
+                    }
+                }
+            )
+        )
+        plotly_fig.add_trace(
+            go.Scatter(
+                x=[np.round(df['widths'].sum(), 2), np.round(df['widths'].sum(), 2)],
+                name='Predicted Probability',
+                mode='lines',
+                y=[
+                    df[df['inds']==df['inds'].min()]['ylabels'].values[0],
+                    df[df['inds']==df['inds'].max()]['ylabels'].values[0]
+                ],
+                line={'dash': 'dot'}
+            )
+        )
+        baseline_label = ['']
+        features_labels = df.query('inds > 0')['widths'].tolist()
+        features_labels = [f'+{label}' if label > 0 else label for label in features_labels]
+        data_labels = baseline_label+features_labels
+        plotly_fig.data[0].text = data_labels
+        plotly_fig.update_layout(
+            title = 'Prediction Flow Chart',
+            height=800,
+            width=1200,
+            **{
+                'yaxis': {'showgrid': False},
+                'xaxis': {'showgrid': False, 'range': [plt.xlim()[0], plt.xlim()[1]]},
+                'plot_bgcolor': 'rgba(0,0,0,0)'
+            }
+        )
 
     if show:
-        plt.show()
+        if global_renderer == 'matplotlib':
+            plt.show()
+        elif global_renderer == 'plotly':
+            plt.close()
+            return plotly_fig.show()
     else:
-        return plt.gcf()
+        if global_renderer == 'matplotlib':
+            return plt.gcf()
+        elif global_renderer == 'plotly':
+            plt.close()
+            return plotly_fig
