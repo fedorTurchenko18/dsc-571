@@ -1,5 +1,7 @@
-import pandas as pd, base64, requests, warnings, numpy as np, shap, plotly.graph_objs as go
+import pandas as pd, base64, requests, warnings, numpy as np, shap
 warnings.filterwarnings('ignore')
+from io import BytesIO
+from loguru import logger
 
 import sys, os
 sys.path.append(os.path.abspath('../..'))
@@ -8,11 +10,8 @@ from service.app_ui.shap_plots.waterfall import waterfall
 import matplotlib.pyplot
 matplotlib.pyplot.switch_backend('Agg') 
 
-from dash import Input, Output, State, callback
-from io import BytesIO
-
 import dash_bootstrap_components as dbc
-from dash import html, dcc
+from dash import Input, Output, State, callback, html, dcc
 
 
 def _make_prediction_request(sales, customers, ciid):
@@ -25,19 +24,21 @@ def _make_prediction_request(sales, customers, ciid):
     sales_cut = sales_cut.to_dict(orient='list')
 
     customers_cut = customers[customers['ciid']==ciid]
+    customers_cut[['accreccreateddate', 'ciyearofbirth']] = customers_cut[['accreccreateddate', 'ciyearofbirth']].astype(str)
     customers_cut.drop('ciid', axis=1, inplace=True)
     customers_cut.dropna(axis=1, inplace=True)
-    customers_cut['accreccreateddate'] = customers_cut['accreccreateddate'].astype(str)
     customers_cut = customers_cut.to_dict(orient='list')
 
-    request = requests.post(
-        'http://0.0.0.0:8000/predict',
-        json={
+    request_json = {
             'user': {'ciid': ciid},
             'sales': sales_cut,
             'customers': customers_cut,
             'request_fields': {'fields': ['prediction', 'confidence', 'shapley_values']}
         }
+    logger.info(request_json)
+    request = requests.post(
+        'http://0.0.0.0:8000/predict',
+        json=request_json
     )
     response = request.json()
     return response
