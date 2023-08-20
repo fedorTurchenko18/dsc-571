@@ -5,10 +5,10 @@ import pandas as pd
 
 from typing import Literal
 
-from service.app_api.configs.utils import format_value, safe_isinstance
-from service.app_api.shap_plots.utils import colors
-from service.app_api.shap_plots.utils.labels import labels
-from service.app_api.shap_plots.utils.logit_transformation import shap_transform_scale
+from service.app_ui.shap_plots.utils.helper_funcs import format_value, safe_isinstance
+from service.app_ui.shap_plots.utils import colors
+from service.app_ui.shap_plots.utils.labels import labels
+from service.app_ui.shap_plots.utils.logit_transformation import shap_transform_scale
 
 
 # TODO: If we make a JS version of this plot then we could let users click on a bar and then see the dependence

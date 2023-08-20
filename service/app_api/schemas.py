@@ -44,8 +44,10 @@ class RequestFields(BaseModel):
 
 
 class PredictionFields(BaseModel):
-    prediction: str
-    confidence: Optional[float] = None
+    prediction: int
+    target_month: int
+    n_purchases: int
+    confidence: Optional[List[float]] = None
     # shapley_values: Optional[Union[List[List[float]], Any]] = None
     shapley_values: Optional[
         Dict[

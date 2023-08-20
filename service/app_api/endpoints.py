@@ -1,7 +1,5 @@
-import pandas as pd, numpy as np, yaml, inflect, shap, json
-
-import sys, os
-sys.path.append(os.path.abspath('../..'))
+import pandas as pd, numpy as np, yaml, inflect, shap, json, mpld3, matplotlib.pyplot as plt
+plt.switch_backend('Agg') 
 
 from fastapi import FastAPI, HTTPException
 import service.app_api.schemas as schemas
@@ -106,20 +104,15 @@ def predict(
     )
     X = X[model_features]
 
-
-    prediction_mapping = {
-        0: f'The user is unlikely to make any purchases in the {num_convert.ordinal(TARGET_MONTH)} month after first purchase',
-        1: f'The user is likely to make at least {N_PURCHASES} purchase(s) in the {num_convert.ordinal(TARGET_MONTH)} month after first purchase',
-    }
     prediction = int(model.predict(X)[0])
-    output = schemas.PredictionFields(prediction=prediction_mapping[prediction])
+    output = schemas.PredictionFields(prediction=prediction, target_month=TARGET_MONTH, n_purchases=N_PURCHASES)
 
     request_fields = request_fields.model_dump()
 
     if 'confidence' in request_fields['fields']:
         probas = model.predict_proba(X)
-        confidence = probas[0][0] if prediction == 0 else probas[0][1]
-        output.confidence = confidence.astype(np.float64)
+        confidence = probas[0]
+        output.confidence = confidence.astype(np.float64).tolist()
 
     if 'shapley_values' in request_fields['fields']:
         explainer = shap.TreeExplainer(model)

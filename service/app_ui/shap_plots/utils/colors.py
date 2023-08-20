@@ -4,7 +4,7 @@
 
 import numpy as np
 
-from service.app_api.shap_plots.utils.colorconv import lab2rgb, lch2lab
+from service.app_ui.shap_plots.utils.colorconv import lab2rgb, lch2lab
 
 try:
     import matplotlib  # noqa: F401
