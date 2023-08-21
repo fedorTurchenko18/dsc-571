@@ -3,7 +3,7 @@ from dash import html, dcc
 from utils import *
 
 app = app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-
+app.config['suppress_callback_exceptions'] = True
 server = app.server
 
 input_form = dbc.Form([
@@ -148,6 +148,7 @@ api_output = dbc.Card(
                 ),
                 dbc.Col(
                     [
+                        html.Div(id='waterfall-chart-slider-div'),
                         html.Div(id='waterfall-chart-div')
                     ]
                 )
@@ -183,3 +184,4 @@ app.layout = dbc.Container(
 
 if __name__ == '__main__':
     app.run(debug=True)
+    # app.run(debug=False,dev_tools_ui=False,dev_tools_props_check=False)

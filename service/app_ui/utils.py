@@ -75,7 +75,7 @@ def _process_prediction_request(response, ciid):
             'api-output-store': response
         }
 
-def _waterfall_plot(response):
+def _waterfall_plot(response, max_display=10):
     shapley_values = np.array(response['shapley_values']['shapley_values'])
     X = pd.DataFrame(response['shapley_values']['X'])
     y = pd.DataFrame(response['shapley_values']['y'])
@@ -88,7 +88,7 @@ def _waterfall_plot(response):
         base_values=np.array([ev]*X.shape[0], dtype=np.float32),
         feature_names=X.columns
     )
-    fig = waterfall(shapley_values_explainer[0], link='logit', predicted_probability=pred_proba[1], show=False)
+    fig = waterfall(shapley_values_explainer[0], link='logit', predicted_probability=pred_proba[1], show=False, max_display=max_display)
     fig = fig.update_layout(
         width=700,
         height=500,
@@ -169,6 +169,7 @@ def process_file_input(contents, filename):
 @callback(
     Output('card-div', 'children'),
     Output('waterfall-chart-div', 'children'),
+    Output('waterfall-chart-slider-div', 'children'),
     Output('loading-form-submit', 'children'),
     Output('form-submit-button', 'value'),
     Output('api-output-store', 'data'),
@@ -180,7 +181,7 @@ def process_file_input(contents, filename):
 )
 def get_prediction(click, data, ciid, ciid_value, current_response):
     if click is None:
-        return None, None, None, '', {}
+        return None, None, None, None, '', {}
     else:
         if ciid == ciid_value:
             parsed_response = _process_prediction_request(current_response, ciid)
@@ -205,7 +206,50 @@ def get_prediction(click, data, ciid, ciid_value, current_response):
                 figure=parsed_response['waterfall-chart'],
                 id='waterfall-chart'
             ) if parsed_response['waterfall-chart'] is not None else None,
+            html.Div(
+                [
+                    dbc.Label(
+                        "Select the number of predictors to display on the y-axis:",
+                        html_for="waterfall-chart-slider",
+                        style={
+                            'margin-top': '20px',
+                            'margin-left': '19px'
+                        }
+                    ),
+                    dcc.Slider(
+                        min=1, 
+                        max=20,
+                        value=10,
+                        step=1,
+                        marks=dict(zip([1]+[x for x in range(1, 21) if x % 5 == 0], ['1']+[str(x) for x in range(1, 21) if x % 5 == 0])),
+                        id='waterfall-chart-slider'
+                    ),
+                    dbc.FormText(
+                        [
+                            'Now displaying ',
+                            html.Span('10', id='waterfall-chart-slider-current-value'),
+                            ' features'
+                        ],
+                        style={
+                            'margin-left': '19px'
+                        }
+                    )
+                ]
+            ) if parsed_response['waterfall-chart'] is not None else None,
+            
             parsed_response['loading-form-submit'],
             parsed_response['form-submit-button'],
             parsed_response['api-output-store']
         )
+
+@callback(
+    Output('waterfall-chart', 'figure'),
+    Output('waterfall-chart-slider-current-value', 'children'),
+    Input('waterfall-chart-slider', 'value'),
+    State('waterfall-chart-div', 'children'),
+    State('api-output-store', 'data')
+)
+def waterfall_y_axis(n_features, chart, response):
+    if chart != []:
+        fig = _waterfall_plot(response, max_display=n_features)
+        return fig, str(n_features)
