@@ -2,10 +2,11 @@ import pandas as pd, base64, requests, warnings, numpy as np, shap
 warnings.filterwarnings('ignore')
 from io import BytesIO
 from loguru import logger
+from requests.exceptions import ConnectionError
 
-import sys, os
-sys.path.append(os.path.abspath('../..'))
-from service.app_ui.shap_plots.waterfall import waterfall
+# import sys, os
+# sys.path.append(os.path.abspath('../..'))
+from shap_plots.waterfall import waterfall
 
 import matplotlib.pyplot
 matplotlib.pyplot.switch_backend('Agg') 
@@ -36,10 +37,16 @@ def _make_prediction_request(sales, customers, ciid):
             'request_fields': {'fields': ['prediction', 'confidence', 'shapley_values']}
         }
     logger.info(request_json)
-    request = requests.post(
-        'http://0.0.0.0:8000/predict',
-        json=request_json
-    )
+    try:
+        request = requests.post(
+            'http://0.0.0.0:8000/predict',
+            json=request_json
+        )
+    except ConnectionError:
+        request = requests.post(
+            'http://app-api:8000/predict',
+            json=request_json
+        )
     response = request.json()
     return response
 

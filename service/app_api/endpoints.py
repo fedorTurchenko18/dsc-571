@@ -24,6 +24,7 @@ PERIOD = config['period']
 SUBPERIOD = config['subperiod']
 
 # Get model from Weights&Biases
+utils.login_wandb()
 model_artifact = utils.get_artifact(config['wandb_model_project'], f"{config['wandb_model_id']}_model.json")
 model_artifact.download(config['model_path'])
 model = XGBClassifier()

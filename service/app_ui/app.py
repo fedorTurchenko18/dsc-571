@@ -4,6 +4,8 @@ from utils import *
 
 app = app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
+server = app.server
+
 input_form = dbc.Form([
     dbc.Row(
         [
