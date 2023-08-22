@@ -386,7 +386,7 @@ def waterfall(
         plotly_fig.add_trace(
             go.Scatter(
                 x=[np.round(df['widths'].sum(), 2), np.round(df['widths'].sum(), 2)],
-                name='Predicted Probability',
+                name='Predicted Probability\nof Retention',
                 mode='lines',
                 y=[
                     df[df['inds']==df['inds'].min()]['ylabels'].values[0],

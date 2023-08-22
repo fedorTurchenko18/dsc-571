@@ -30,27 +30,43 @@ def _make_prediction_request(sales, customers, ciid):
     customers_cut.dropna(axis=1, inplace=True)
     customers_cut = customers_cut.to_dict(orient='list')
 
-    request_json = {
-            'user': {'ciid': ciid},
-            'sales': sales_cut,
-            'customers': customers_cut,
-            'request_fields': {'fields': ['prediction', 'confidence', 'shapley_values']}
-        }
-    logger.info(request_json)
+    request_pred_json = {
+        'user': {'ciid': ciid},
+        'sales': sales_cut,
+        'customers': customers_cut,
+        'request_fields': {'fields': ['prediction', 'confidence', 'shapley_values']}
+    }
+    request_clust_json = {
+        'user': {'ciid': ciid},
+        'sales': sales_cut,
+        'customers': customers_cut
+    }
+    logger.info(request_pred_json)
     try:
-        request = requests.post(
+        request_pred = requests.post(
             'http://0.0.0.0:8000/predict',
-            json=request_json
+            json=request_pred_json
+        )
+        request_clust = requests.post(
+            'http://0.0.0.0:8000/predict_cluster',
+            json=request_pred_json
         )
     except ConnectionError:
-        request = requests.post(
+        request_pred = requests.post(
             'http://app-api:8000/predict',
-            json=request_json
+            json=request_pred_json
         )
-    response = request.json()
+        request_clust = requests.post(
+            'http://app-api:8000/predict_cluster',
+            json=request_pred_json
+        )
+    response = {
+        'prediction': request_pred.json(),
+        'clustering': request_clust.json()
+    }
     return response
 
-def _process_prediction_request(response, ciid):
+def _process_prediction_response(response, ciid):
     if 'detail' in response.keys():
         return {
             'form-submit-button': ciid,
@@ -58,7 +74,6 @@ def _process_prediction_request(response, ciid):
             'prediction-confidence': '',
             'waterfall-chart': None,
             'loading-form-submit': None,
-            'api-output-store': response
         }
     else:
         prediction_mapping = {
@@ -72,7 +87,48 @@ def _process_prediction_request(response, ciid):
             'prediction-confidence': f"Prediction confidence: {response['confidence'][0] * 100 :.2f}%" if response['prediction'] == 0 else f"Prediction confidence: {response['confidence'][1] * 100 :.2f}%",
             'waterfall-chart': waterfall_chart,
             'loading-form-submit': None,
-            'api-output-store': response
+        }
+
+def _process_clustering_response(response):
+    if 'detail' in response.keys():
+        return {
+            'clustering-decision': None,
+            'clustering-sim-table': pd.DataFrame()
+        }
+    else:
+        cluster = response['cluster']
+        predicted_cluster = response['label'].replace('_', ' ').title()
+
+        similarities = response['similarities'][0]
+        clusters_mapping = response['clusters_mapping']
+        
+        # drop predicted cluster
+        similarities = [i for i in similarities if similarities.index(i) != cluster]
+        clusters_mapping = {str(i): clusters_mapping[i] for i in clusters_mapping.keys() if i != str(cluster)}
+
+        df_sim = pd.DataFrame({
+            'Segment': list(clusters_mapping.values()),
+            'Affiliation Likelihood': similarities
+        })
+        df_sim.sort_values('Affiliation Likelihood', ascending=False, inplace=True)
+        df_sim['Segment'] = df_sim['Segment'].apply(lambda x: x.replace('_', ' ').title())
+        df_sim['Affiliation Likelihood'] = df_sim['Affiliation Likelihood'].apply(lambda x: f'{x * 100: .2f}%')
+
+        return {
+            'clustering-decision': [
+                'The user is predicted to be in a segment of ',
+                html.B(predicted_cluster),
+                ' according to ',
+                html.Span(
+                    html.U('RFM'),
+                    id='rfm-tooltip',
+                    style={
+                        'cursor': 'pointer'
+                    }
+                ),
+                ' segmentation'
+            ],
+            'clustering-sim-table': df_sim
         }
 
 def _waterfall_plot(response, max_display=10):
@@ -170,6 +226,7 @@ def process_file_input(contents, filename):
     Output('card-div', 'children'),
     Output('waterfall-chart-div', 'children'),
     Output('waterfall-chart-slider-div', 'children'),
+    Output('clusters-desc-div', 'children'),
     Output('loading-form-submit', 'children'),
     Output('form-submit-button', 'value'),
     Output('api-output-store', 'data'),
@@ -181,31 +238,98 @@ def process_file_input(contents, filename):
 )
 def get_prediction(click, data, ciid, ciid_value, current_response):
     if click is None:
-        return None, None, None, None, '', {}
+        return None, None, None, None, None, '', {}
     else:
         if ciid == ciid_value:
-            parsed_response = _process_prediction_request(current_response, ciid)
+            parsed_pred_response = _process_prediction_response(current_response['prediction'], ciid)
+            parsed_clust_response = _process_clustering_response(current_response['clustering'])
         else:
             response = _make_prediction_request(data['sales'], data['customers'], ciid)
-            parsed_response = _process_prediction_request(response, ciid)
+            parsed_pred_response = _process_prediction_response(response['prediction'], ciid)
+            parsed_clust_response = _process_clustering_response(response['clustering'])
+        
+        if 'outdated' not in parsed_pred_response['prediction-decision']:
+            clustering_layout = [
+                html.H4('Clustering Result'),
+                html.P(
+                    parsed_clust_response['clustering-decision'],
+                    id='clustering-decision'
+                ),
+                html.P('Affiliation likelihood with 3 other segments:'),
+                dbc.Tooltip(
+                    [
+                        'R – Recency', html.Br(),
+                        'F – Frequency', html.Br(),
+                        'M – Monetary'
+                    ],
+                    target='rfm-tooltip'
+                ),
+                dbc.Table.from_dataframe(
+                    parsed_clust_response['clustering-sim-table'],
+                    striped=True,
+                    bordered=True,
+                    hover=True,
+                    id='clustering-sim-table'
+                )
+            ]
+            clusters_desc_layout = dbc.Accordion(
+                dbc.AccordionItem(
+                    [
+                        html.P(
+                            [
+                                html.P(
+                                    [
+                                        html.B('Regular Drivers: '),
+                                        html.Span('The customers in this cluster are quite loyal but, perhaps, do not drive much, hence they do not need to visit gas stations often and spend a lot')
+                                    ]
+                                ),
+                                html.P(
+                                    [
+                                        html.B('Passerbys: '),
+                                        html.Span('The customers in this cluster made one-two visits and most likely have left')
+                                    ]
+                                ),
+                                html.P(
+                                    [
+                                        html.B('Frequent Drivers: '),
+                                        html.Span('The customers in this cluster frequently visit gas stations, spending a lot. Perhaps, these are the most loyal customers')
+                                    ]
+                                ),
+                                html.P(
+                                    [
+                                        html.B('At Churn Risk: '),
+                                        html.Span('The customers in this cluster visit gas stations from time to time. They do not spend much, do not make their visits often, hence could be considered to be at risk of churn')
+                                    ]
+                                ),
+                            ]
+                        ),
+                    ],
+                    title='Click to find more about the clusters'
+                ),
+                start_collapsed=True
+            )
+        else:
+            clustering_layout, clusters_desc_layout = [], None
+
         return (
             dbc.CardBody(
                 [
                     html.H4('Prediction Result'),
                     html.P(
-                        parsed_response['prediction-decision'],
+                        parsed_pred_response['prediction-decision'],
                         id='prediction-decision'
                     ),
                     html.P(
-                        parsed_response['prediction-confidence'],
+                        parsed_pred_response['prediction-confidence'],
                         id='prediction-confidence'
-                    )
-                ]
+                    ),
+                    
+                ] + clustering_layout
             ),
             dcc.Graph(
-                figure=parsed_response['waterfall-chart'],
+                figure=parsed_pred_response['waterfall-chart'],
                 id='waterfall-chart'
-            ) if parsed_response['waterfall-chart'] is not None else None,
+            ) if parsed_pred_response['waterfall-chart'] is not None else None,
             html.Div(
                 [
                     dbc.Label(
@@ -233,13 +357,13 @@ def get_prediction(click, data, ciid, ciid_value, current_response):
                         style={
                             'margin-left': '19px'
                         }
-                    )
+                    ),
                 ]
-            ) if parsed_response['waterfall-chart'] is not None else None,
-            
-            parsed_response['loading-form-submit'],
-            parsed_response['form-submit-button'],
-            parsed_response['api-output-store']
+            ) if parsed_pred_response['waterfall-chart'] is not None else None,
+            clusters_desc_layout,
+            parsed_pred_response['loading-form-submit'],
+            parsed_pred_response['form-submit-button'],
+            response if ciid != ciid_value else current_response
         )
 
 @callback(
@@ -251,5 +375,5 @@ def get_prediction(click, data, ciid, ciid_value, current_response):
 )
 def waterfall_y_axis(n_features, chart, response):
     if chart != []:
-        fig = _waterfall_plot(response, max_display=n_features)
+        fig = _waterfall_plot(response['prediction'], max_display=n_features)
         return fig, str(n_features)

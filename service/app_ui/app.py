@@ -153,7 +153,8 @@ api_output = dbc.Card(
                     ]
                 )
             ]
-        ) 
+        ),
+        html.Div(id='clusters-desc-div')
     ],
     style={
         'margin-top': '20px'
