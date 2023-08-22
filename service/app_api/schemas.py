@@ -25,6 +25,7 @@ class EkoCustomers(BaseModel):
 
 class RequestFields(BaseModel):
     fields: Union[Literal['prediction'], List[Literal['prediction', 'confidence', 'shapley_values']]]
+
     @validator('fields', pre=True, always=True)
     def validate_custom_field(cls, value):
         if isinstance(value, str):
@@ -48,7 +49,6 @@ class PredictionFields(BaseModel):
     target_month: int
     n_purchases: int
     confidence: Optional[List[float]] = None
-    # shapley_values: Optional[Union[List[List[float]], Any]] = None
     shapley_values: Optional[
         Dict[
             # key
@@ -56,16 +56,38 @@ class PredictionFields(BaseModel):
             # possible values
             Union[
                 # 2D numpy array converted to list (np.array.tolist())
+                # represents shapley values
                 List[List[float]],
                 # pandas dataframe converted to dictionary (`pd.DataFrame.to_dict(orient='list')`)
+                # represents features set after all transformations
                 Dict[
                     # key
                     str,
                     # values
-                    List[List[float]]
+                    # List[List[float]]
+                    List[float]
                 ],
                 # a single value
+                # represents shapley expected value
                 float
             ]
         ]
     ] = None
+
+
+class EkoRFM(BaseModel):
+    # pandas dataframe converted to dictionary (`pd.DataFrame.to_dict(orient='list')`)
+    # represents rfm features dataframe
+    rfm_features: Dict[
+        # key
+        str,
+        # values
+        List[float]
+    ]
+
+
+class ClusterPredictionFields(BaseModel):
+    cluster: int
+    label: str
+    similarities: List[List[float]]
+    clusters_mapping: Dict[int, str]

@@ -6,10 +6,18 @@ generation_type: 'continuous'
 filtering_set: 'customers'
 period: 60
 subperiod: 15
-# Model location on Weights&Biases
-wandb_model_project: 'X-G-B-Classifier'
-wandb_model_id: 'gnazdw35'
-# Path where the model will be saved locally after it is loaded from Weights&Biases
+# Classification model location on Weights&Biases
+wandb_classification_model_project: 'X-G-B-Classifier'
+wandb_classification_model_id: 'gnazdw35'
+# Clustering model centroids on Weights&Biases
+wandb_clustering_model_project: 'K-Means'
+wandb_clustering_model_id: 'clustering_report'
+clusters_mapping:
+  0: 'regular_drivers'
+  1: 'passerbys'
+  2: 'frequent_drivers'
+  3: 'at_churn_risk'
+# Path where the models will be saved locally after being downloaded from Weights&Biases
 model_path: 'service/app_api/configs'
 # Miscellaneous params for hints mostly
 customers_set_filtering_thresholds: '2021-06-01 00:00:00'
