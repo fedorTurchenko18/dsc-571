@@ -195,9 +195,13 @@ def predict_cluster(
     X = X[['monetary', 'recency', 'average_days_between_visits']]
     # outliers winsorization
     X.loc[X['monetary'] > monetary_threshold, 'monetary'] = monetary_threshold
-    # scaling
-    X = StandardScaler().fit_transform(X)
-    euclidean_distances = cdist(X, centroids)
+    # Assure proper scaling (ref: https://stackoverflow.com/questions/46555820/sklearn-standardscaler-returns-all-zeros)
+    X = X.to_numpy()[0]
+    X = StandardScaler().fit_transform(X[:, np.newaxis])
+    # Reshape: 1 col 3 rows => 3 cols 1 row
+    # to assure proper distance computation
+    X = X.reshape(1, -1)
+    euclidean_distances = cdist(X, centroids, 'euclidean')
     similarities = np.exp(-euclidean_distances).astype(np.float64)
     cluster = similarities[0].tolist().index(similarities.max())
     label = clusters_mapping[cluster]
