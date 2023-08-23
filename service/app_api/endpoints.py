@@ -1,4 +1,5 @@
 import pandas as pd, numpy as np, yaml, inflect, shap, json, logging
+from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -53,10 +54,10 @@ num_convert = inflect.engine()
 # Extended logging for 422 Unprocessable Entity
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-	exc_str = f'{exc}'.replace('\n', ' ').replace('   ', ' ')
-	logging.error(f'{request}: {exc_str}')
-	content = {'status_code': 10422, 'message': exc_str, 'data': None}
-	return JSONResponse(content=content, status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
+    exc_str = f'{exc}'.replace('\n', ' ').replace('   ', ' ')
+    logging.error(f'{request}: {exc_str}')
+    content = {'status_code': 10422, 'message': exc_str, 'data': None}
+    return JSONResponse(content=content, status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
 
 @app.post('/predict', response_model=schemas.PredictionFields)
@@ -71,7 +72,10 @@ def predict(
     sales = sales.model_dump()
     sales_df = pd.DataFrame(
         data={
-            'receiptdate': pd.Series(sales['receiptdate'], dtype='datetime64[ns]'),
+            'receiptdate': pd.Series(
+                [datetime.fromtimestamp(val) for val in sales['receiptdate']],
+                dtype='datetime64[ns]'
+            ),
             'qty': sales['qty'],
             'receiptid': sales['receiptid'],
             'proddesc': sales['proddesc'],
@@ -85,7 +89,10 @@ def predict(
     customers_df = pd.DataFrame(
         data={
             'ciid': user['ciid'],
-            'accreccreateddate': pd.Series(customers['accreccreateddate'], dtype='datetime64[ns]'),
+            'accreccreateddate': pd.Series(
+                [datetime.fromtimestamp(val) for val in customers['accreccreateddate']],
+                dtype='datetime64[ns]'
+            ),
             'lifecyclestate': customers['lifecyclestate'],
             'cigender': customers['cigender'],
             'ciyearofbirth': customers['ciyearofbirth']

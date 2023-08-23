@@ -1,6 +1,17 @@
-from pydantic import BaseModel, validator
-from datetime import datetime
+import yaml
+
+from datetime import datetime, date
+from pydantic import BaseModel, validator, conint, confloat
 from typing import List, Optional, Union, Literal, Dict
+
+with open('service/app_api/api_config.yaml', 'rb') as f:
+    config = yaml.safe_load(f)
+
+clusters = list(config['clusters_mapping'].keys())
+FIRST_CLUSTER = min(clusters)
+LAST_CLUSTER = max(clusters)
+
+MIN_CUSTOMER_REGISTRATION_DATE = config['customers_set_filtering_thresholds']
 
 
 class EkoUser(BaseModel):
@@ -8,8 +19,14 @@ class EkoUser(BaseModel):
 
 
 class EkoSales(BaseModel):
-    receiptdate: List[datetime]
-    qty: List[float]
+    receiptdate: List[
+        confloat(
+            ge=datetime.timestamp(
+                datetime.strptime(MIN_CUSTOMER_REGISTRATION_DATE, '%Y-%m-%d %H:%M:%S')
+            )
+        )
+    ]
+    qty: List[confloat(allow_inf_nan=False)]
     receiptid: List[str]
     proddesc: List[str]
     prodcategoryname: List[str]
@@ -17,7 +34,14 @@ class EkoSales(BaseModel):
 
 
 class EkoCustomers(BaseModel):
-    accreccreateddate: List[datetime]
+    accreccreateddate: List[
+        confloat(
+            ge=datetime.timestamp(
+                datetime.strptime(MIN_CUSTOMER_REGISTRATION_DATE, '%Y-%m-%d %H:%M:%S')
+            )
+        )
+    ]
+    # accreccreateddate: List[date]
     lifecyclestate: Optional[List[str]] = None
     cigender: Optional[List[str]] = None
     ciyearofbirth: Optional[List[str]] = None
@@ -45,10 +69,15 @@ class RequestFields(BaseModel):
 
 
 class PredictionFields(BaseModel):
-    prediction: int
-    target_month: int
-    n_purchases: int
-    confidence: Optional[List[float]] = None
+    # predicted class could be either 0 or 1
+    prediction: conint(ge=0, le=1)
+    # prediction could be made for the second month of activity at minimum
+    # first month of activity is always used as training data
+    target_month: conint(ge=2)
+    # target variable is constructed from at least one purchase made at `target_month`
+    n_purchases: conint(ge=1)
+    # confidence is a probability, limited to the range of [0; 1]
+    confidence: Optional[List[confloat(gt=0.0, le=1.0)]] = None
     shapley_values: Optional[
         Dict[
             # key
@@ -87,7 +116,7 @@ class EkoRFM(BaseModel):
 
 
 class ClusterPredictionFields(BaseModel):
-    cluster: int
+    cluster: conint(ge=FIRST_CLUSTER, le=LAST_CLUSTER)
     label: str
     similarities: List[List[float]]
-    clusters_mapping: Dict[int, str]
+    clusters_mapping: Dict[conint(ge=FIRST_CLUSTER, le=LAST_CLUSTER), str]
