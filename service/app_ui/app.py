@@ -1,4 +1,4 @@
-import dash_bootstrap_components as dbc, dash, plotly
+import dash_bootstrap_components as dbc, dash, plotly, json
 from dash import html, dcc, Input, Output, callback
 from utils import *
 from sidebar import *
@@ -200,8 +200,17 @@ def render_page_content(pathname):
     elif pathname == "/dashboard":
         monthly_visits_line_chart = plotly.io.read_json('static/monthly_visits.json')
         funnel_chart = plotly.io.read_json('static/funnel.json')
-        max_breaks_chart = plotly.io.read_json('static/max_breaks.json')
+        # max_breaks_chart = plotly.io.read_json('static/max_breaks.json')
         max_breaks__horizontal_chart = plotly.io.read_json('static/max_breaks_horizontal.json')
+        rfm_table = pd.read_json('static/rfm_table.json').reset_index(drop=False).rename(columns={'index': 'Indicator'})
+        
+        with open('static/segments_target_rfm_table.json') as data_file:    
+            d = json.load(data_file)  
+        segments_target_rfm_table = pd.concat({k: pd.DataFrame(v) for k, v in d.items()}).\
+            unstack(0).swaplevel(1,0, axis=1).\
+            sort_index(axis=1).reset_index(drop=False).\
+            rename(columns={'index': 'Indicator'})
+        segments_target_rfm_table['Indicator'] = ['Frequency', 'Monetary', 'Recency']
 
         funnel_chart.update_layout(
             height=600
@@ -268,6 +277,47 @@ def render_page_content(pathname):
                             )
                         ]
                     ),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    html.H5('Recency-Frequency-Monetary Median Indicators'),
+                                    dbc.Table.from_dataframe(
+                                        rfm_table,
+                                        striped=True,
+                                        bordered=True,
+                                        hover=True,
+                                        id='rfm-table'
+                                    )
+                                ],
+                                width=7,
+                                style={
+                                    'margin-left': '20px'
+                                }
+                            ),
+                        ]
+                    ),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    html.H5('Recency-Frequency-Monetary Median Indicators by Segments'),
+                                    dbc.Table.from_dataframe(
+                                        segments_target_rfm_table,
+                                        striped=True,
+                                        bordered=True,
+                                        hover=True,
+                                        id='segments-target-rfm-table'
+                                    )
+                                ],
+                                style={
+                                    'margin-left': '20px',
+                                    'margin-right': '20px',
+                                    'margin-top': '50px'
+                                }
+                            ),
+                        ]
+                    )
                 ]
             )
         ]
