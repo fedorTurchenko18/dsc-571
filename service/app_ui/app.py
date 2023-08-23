@@ -1,8 +1,9 @@
-import dash_bootstrap_components as dbc, dash, plotly.graph_objs as go
-from dash import html, dcc
+import dash_bootstrap_components as dbc, dash, plotly
+from dash import html, dcc, Input, Output, callback
 from utils import *
+from sidebar import *
 
-app = app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP])
 app.config['suppress_callback_exceptions'] = True
 server = app.server
 
@@ -163,25 +164,122 @@ api_output = dbc.Card(
     
 app.layout = dbc.Container(
     [
-        html.H1(
-            "Churn Prediction App",
-            style={
-                'margin-top': '10px'
-            }
-        ),
-        html.Hr(
-            style={
-                "borderWidth": "0.5vh",
-                "width": "100%",
-                "borderColor": "#000000",
-                "opacity": "unset",
-            }
-        ),
-        input_form,
-        api_output
-    ]
+        dcc.Location(id="url"),
+        sidebar,
+        html.Div(id='page-content')
+    ],
+    style={
+        "margin-left": "18rem"
+    }
 )
 
+@callback(
+    Output("page-content", "children"),
+    Input("url", "pathname")
+)
+def render_page_content(pathname):
+    if pathname == "/prediction-app":
+        return [
+            html.H1(
+                "Churn Prediction App",
+                style={
+                    'margin-top': '10px'
+                }
+            ),
+            html.Hr(
+                style={
+                    "borderWidth": "0.5vh",
+                    "width": "100%",
+                    "borderColor": "#000000",
+                    "opacity": "unset",
+                }
+            ),
+            input_form,
+            api_output
+        ]
+    elif pathname == "/dashboard":
+        monthly_visits_line_chart = plotly.io.read_json('static/monthly_visits.json')
+        funnel_chart = plotly.io.read_json('static/funnel.json')
+        max_breaks_chart = plotly.io.read_json('static/max_breaks.json')
+        max_breaks__horizontal_chart = plotly.io.read_json('static/max_breaks_horizontal.json')
+
+        funnel_chart.update_layout(
+            height=600
+        )
+
+        return [
+            html.H1(
+                "Historical Data Dashboard",
+                style={
+                    'margin-top': '10px'
+                }
+            ),
+            html.Hr(
+                style={
+                    "borderWidth": "0.5vh",
+                    "width": "100%",
+                    "borderColor": "#000000",
+                    "opacity": "unset",
+                }
+            ),
+            dbc.Card(
+                [
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    dcc.Graph(
+                                        figure=monthly_visits_line_chart,
+                                        id='monthly-visits-line-chart'
+                                    )
+                                ]
+                            ),
+                        ]
+                    ),
+                    dbc.Row(
+                        [
+                            # dbc.Col(
+                            #     [
+                            #         dcc.Graph(
+                            #             figure=max_breaks_chart,
+                            #             id='max-breaks-chart'
+                            #         )
+                            #     ]
+                            # )
+                            dbc.Col(
+                                [
+                                    dcc.Graph(
+                                        figure=max_breaks__horizontal_chart,
+                                        id='max-breaks-horizontal-chart'
+                                    )
+                                ]
+                            )
+                        ]
+                    ),
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    dcc.Graph(
+                                        figure=funnel_chart,
+                                        id='funnel-chart'
+                                    )
+                                ]
+                            )
+                        ]
+                    ),
+                ]
+            )
+        ]
+    # If the user tries to reach a different page, return a 404 message
+    return html.Div(
+        [
+            html.H1("404: Not found", className="text-danger"),
+            html.Hr(),
+            html.P(f"The pathname {pathname} was not recognised..."),
+        ],
+        className="p-3 bg-light rounded-3",
+    )
 
 if __name__ == '__main__':
     app.run(debug=True)
