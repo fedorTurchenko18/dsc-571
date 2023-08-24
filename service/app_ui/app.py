@@ -325,8 +325,15 @@ def render_page_content(pathname):
     return html.Div(
         [
             html.H1("404: Not found", className="text-danger"),
-            html.Hr(),
-            html.P(f"The pathname {pathname} was not recognised..."),
+            html.Hr(
+                style={
+                    "borderWidth": "0.5vh",
+                    "width": "100%",
+                    "borderColor": "#000000",
+                    "opacity": "unset",
+                }
+            ),
+            html.P(f"The pathname {pathname} was not recognised. Please, click on one of the pages on the sidebar at the left to continue"),
         ],
         className="p-3 bg-light rounded-3",
     )
