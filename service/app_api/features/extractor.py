@@ -339,7 +339,7 @@ class FeatureExtractor:
             return np.int32(s.split('-')[1])/30
         
         sales['months_enum'] = sales['months_enum'].apply(months_from_breaks)
-        tmp = sales[sales['months_enum'] == 3].groupby('ciid', as_index=False).agg(purchases_count = pd.NamedAgg('receiptid', 'count'))
+        tmp = sales[sales['months_enum'] == self.target_month].groupby('ciid', as_index=False).agg(purchases_count = pd.NamedAgg('receiptid', pd.Series.nunique))
         tmp = tmp[tmp['purchases_count'] >= self.n_purchases]
         mask = sales['ciid'].isin(tmp['ciid'].unique())
         mask.replace(True, 1, inplace=True)
