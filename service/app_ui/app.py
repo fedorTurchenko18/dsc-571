@@ -321,6 +321,28 @@ def render_page_content(pathname):
                 ]
             )
         ]
+    elif pathname == '/':
+        return [
+            html.H1(
+                "Home Page",
+                style={
+                    'margin-top': '10px'
+                }
+            ),
+            html.Hr(
+                style={
+                    "borderWidth": "0.5vh",
+                    "width": "100%",
+                    "borderColor": "#000000",
+                    "opacity": "unset",
+                }
+            ),
+            html.Div(
+                html.P(
+                    'Welcome to the home page! Proceed by selecting the necessary page using the sidebar on the left.'
+                )
+            )
+        ]
     # If the user tries to reach a different page, return a 404 message
     return html.Div(
         [

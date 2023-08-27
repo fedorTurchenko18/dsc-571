@@ -8,7 +8,7 @@ period: 60
 subperiod: 15
 # Classification model location on Weights&Biases
 wandb_classification_model_project: 'X-G-B-Classifier'
-wandb_classification_model_id: 'gnazdw35'
+wandb_classification_model_id: 'w1vrxrjz'
 # Clustering model centroids on Weights&Biases
 wandb_clustering_model_project: 'K-Means'
 wandb_clustering_model_id: 'clustering_report'
