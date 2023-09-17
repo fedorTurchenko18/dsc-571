@@ -1,0 +1,20 @@
+{
+    "bootstrap": true,
+    "ccp_alpha": 0.0,
+    "class_weight": null,
+    "criterion": "gini",
+    "max_depth": 53,
+    "max_features": 0.8500000000000001,
+    "max_leaf_nodes": null,
+    "max_samples": 0.7000000000000001,
+    "min_impurity_decrease": 0.0,
+    "min_samples_leaf": 0.0007811550408734325,
+    "min_samples_split": 0.00012081964294076039,
+    "min_weight_fraction_leaf": 0.0,
+    "n_estimators": 96,
+    "n_jobs": 7,
+    "oob_score": false,
+    "random_state": 571,
+    "verbose": 0,
+    "warm_start": false
+}

@@ -1,0 +1,10 @@
+{
+    "algorithm": "auto",
+    "leaf_size": 30,
+    "metric": "minkowski",
+    "metric_params": null,
+    "n_jobs": 7,
+    "n_neighbors": 31,
+    "p": 2,
+    "weights": "uniform"
+}

@@ -328,12 +328,24 @@ class FeatureExtractor:
             `1 | 0`
         '''
         sales = sales.sort_values(['ciid', 'receiptdate'])
-        sales = pd.concat(
-            [
-                sales.reset_index(drop=True),
-                sales.groupby('ciid')['receiptdate'].apply(self.cut_series, 30).to_frame('months_enum').explode('months_enum').reset_index(drop=True)
-            ],
-            axis=1
+        # sales = pd.concat(
+        #     [
+        #         sales.reset_index(drop=True),
+        #         sales.groupby('ciid')['receiptdate'].apply(self.cut_series, 30).to_frame('months_enum').explode('months_enum').reset_index(drop=True)
+        #     ],
+        #     axis=1
+        # )breaks
+        tmp = sales.groupby('ciid')['receiptdate'].apply(self.cut_series, 30).to_frame('months_enum')
+        tmp['receiptdate_date'] = tmp['months_enum'].apply(lambda x: x[1].tolist())
+        tmp['months_enum'] = tmp['months_enum'].apply(lambda x: x[0])
+        tmp = tmp.explode(['months_enum', 'receiptdate_date']).reset_index()
+        tmp.drop_duplicates(inplace=True)
+        sales['receiptdate_date'] = sales['receiptdate'].dt.date.astype('datetime64')
+        sales = pd.merge(
+            sales,
+            tmp,
+            how='left',
+            on=['ciid', 'receiptdate_date']
         )
         def months_from_breaks(s):
             return np.int32(s.split('-')[1])/30
@@ -365,12 +377,24 @@ class FeatureExtractor:
         Method to calculate sub-periods ranges for each user, append them as a column to the transactional dataset
         '''
         sales.sort_values(['ciid', 'receiptdate'])
-        sales = pd.concat(
-            [
-                sales.reset_index(drop=True),
-                sales.groupby('ciid')['receiptdate'].apply(self.cut_series, self.subperiod).to_frame('breaks').explode('breaks').reset_index(drop=True)
-            ],
-            axis=1
+        # sales = pd.concat(
+        #     [
+        #         sales.reset_index(drop=True),
+        #         sales.groupby('ciid')['receiptdate'].apply(self.cut_series, self.subperiod).to_frame('breaks').explode('breaks').reset_index(drop=True)
+        #     ],
+        #     axis=1
+        # )
+        tmp = sales.groupby('ciid')['receiptdate'].apply(self.cut_series, self.subperiod).to_frame('breaks')
+        tmp['receiptdate_date'] = tmp['breaks'].apply(lambda x: x[1].tolist())
+        tmp['breaks'] = tmp['breaks'].apply(lambda x: x[0])
+        tmp = tmp.explode(['breaks', 'receiptdate_date']).reset_index()
+        tmp.drop_duplicates(inplace=True)
+        sales['receiptdate_date'] = sales['receiptdate'].dt.date.astype('datetime64')
+        sales = pd.merge(
+            sales,
+            tmp,
+            how='left',
+            on=['ciid', 'receiptdate_date']
         )
         return sales
     
@@ -431,7 +455,7 @@ class FeatureExtractor:
             upper += days
             labels.append(f'{lower}-{upper}')
 
-        return new_series.rename_categories({i: j for i, j in zip(new_series.categories, labels)})
+        return new_series.rename_categories({i: j for i, j in zip(new_series.categories, labels)}), s
     
 
     def extract_days_between_visits(self, sales):
@@ -593,6 +617,7 @@ class FeatureExtractor:
                 how='left',
                 on='ciid'
             )
+        sales['recency'] = sales['recency'].replace(-1, 0)
         return sales
     
 

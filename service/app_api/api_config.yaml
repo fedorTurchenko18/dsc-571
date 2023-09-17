@@ -14,7 +14,7 @@ wandb_clustering_model_project: 'K-Means'
 wandb_clustering_model_id: 'clustering_report'
 clusters_mapping:
   0: 'regular_drivers'
-  1: 'passerbys'
+  1: 'passers-by'
   2: 'frequent_drivers'
   3: 'at_churn_risk'
 # Path where the models will be saved locally after being downloaded from Weights&Biases
