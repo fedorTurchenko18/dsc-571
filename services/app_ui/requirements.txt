@@ -1,0 +1,13 @@
+dash==2.12.1
+dash_bootstrap_components==1.4.2
+loguru==0.6.0
+matplotlib==3.5.2
+numpy==1.24.2
+pandas==1.4.2
+plotly==5.15.0
+Requests==2.31.0
+scipy==1.8.1
+service==0.6.0
+shap==0.42.1
+gunicorn==21.2.0
+openpyxl==3.1.2

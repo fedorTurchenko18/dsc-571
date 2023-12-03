@@ -1,0 +1,1 @@
+{"_type": "table", "column_types": {"params": {"type_map": {"monetary_winsorization_threshold": {"params": {"allowed_types": [{"wb_type": "none"}, {"wb_type": "number"}]}, "wb_type": "union"}}}, "wb_type": "typedDict"}, "columns": ["monetary_winsorization_threshold"], "data": [[1252.36]], "ncols": 1, "nrows": 1}
